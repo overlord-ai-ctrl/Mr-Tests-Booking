@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Book / Change Driving Test</title>
+  <link rel="stylesheet" href="../assets/styles.css" />
+
+  <!-- Page-local styles to enhance tier selected state & checklist -->
+  <style>
+    /* Tier cards – strong selected state */
+    .pill { position: relative; }
+    .pill.selected {
+      border-color: #ffffff;
+      box-shadow: 0 0 0 2px rgba(255,255,255,.25) inset, 0 0 0 2px rgba(255,255,255,.08);
+      background: #121926;
+    }
+    .pill .tick {
+      display:none; margin-left:8px; font-size:14px; opacity:.9;
+    }
+    .pill.selected .tick { display:inline; }
+
+    /* Centres checklist */
+    .centres { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:6px }
+    .centres label {
+      display:flex; align-items:center; gap:8px; padding:8px 10px;
+      border:1px solid var(--edge); border-radius:10px; background:#0b1018; cursor:pointer;
+      user-select:none;
+    }
+    .centres input[type="checkbox"] { width:auto; }
+    .selected-centres { margin-top:10px; font-size:13px; color:var(--muted); }
+    .selected-centres .badge {
+      display:inline-flex; align-items:center; gap:6px; margin:4px 6px 0 0;
+      padding:4px 8px; border-radius:999px; border:1px solid var(--edge); background:#0b1018; color:var(--text);
+      font-size:12px;
+    }
+    .selected-centres .rank { opacity:.7; font-size:11px; }
+    .field-error { display:none; color:#ffb4b4; font-size:12px; margin-top:6px }
+
+    /* Sticky submit on mobile (optional – feels great on long forms) */
+    @media (max-width:900px){
+      .sticky-submit {
+        position: sticky; bottom: 0; z-index: 10; background: linear-gradient(to top, rgba(10,13,18,.95), rgba(10,13,18,0));
+        padding-top: 10px; margin-top: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="logo"><img src="../assets/logo.svg" alt="Logo"/><span>Driving Test Portal</span></div>
+    <div class="links">
+      <a class="btn secondary ripple" href="../">Home</a>
+      <a class="btn secondary ripple" href="../track/">Track</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="card">
+      <h2>Request for Changing Your Driving Test</h2>
+      <p class="note">Free to request. You only pay once we secure a slot and you confirm it.</p>
+
+      <div id="errTop" class="alert err"></div>
+
+      <form id="form" novalidate>
+        <label class="req" for="fullName">Full Name</label>
+        <input id="fullName" name="fullName" required placeholder="First Last" autocomplete="name" />
+        <div class="field-error" id="e_fullName"></div>
+
+        <label class="req" for="phoneNumber">Phone (UK)</label>
+        <input id="phoneNumber" name="phoneNumber" required placeholder="07xxxxxxxxx" inputmode="tel" autocomplete="tel" />
+        <div class="field-error" id="e_phoneNumber"></div>
+
+        <label for="affiliateCode">Affiliate Code (optional)</label>
+        <div class="aff-wrap">
+          <div style="display:flex; gap:8px; align-items:center">
+            <input name="affiliateCode" id="affiliateCode" placeholder="e.g. JAMES5" />
+            <button type="button" id="applyAff" class="btn secondary ripple">Apply</button>
+          </div>
+          <div id="affBar" class="aff-bar" style="margin-top:8px">Enter a code and tap “Apply”.</div>
+        </div>
+
+        <label class="req" for="licenseNumberRef">Licence Number</label>
+        <input id="licenseNumberRef" name="licenseNumberRef" required placeholder="e.g. DOEJ612345J99AB" />
+        <div class="field-error" id="e_licenseNumberRef"></div>
+
+        <label class="req" for="dvsaRef">DVSA Test Reference</label>
+        <input id="dvsaRef" name="dvsaRef" required placeholder="e.g. A-123-456-789 or 1234567890" />
+        <div class="field-error" id="e_dvsaRef"></div>
+        <div class="hint">Must be for an existing future DVSA booking.</div>
+
+        <label class="req">Tier</label>
+        <div class="pricing" id="tierWrap">
+          <label class="pill selected" data-tier="Basic">
+            <span><input type="radio" name="tier" value="Basic" checked> Basic</span>
+            <span class="price">£100</span>
+            <span class="tick">✓</span>
+          </label>
+          <label class="pill" data-tier="Premium">
+            <span><input type="radio" name="tier" value="Premium"> Premium</span>
+            <span class="price">£120</span>
+            <span class="tick">✓</span>
+          </label>
+        </div>
+        <div class="hint" id="priceHint">Current price: £100</div>
+
+        <label class="req">Preferred Test Centres (choose up to 3)</label>
+        <div class="centres" id="centres">
+          <!-- Add/remove options freely; JS handles max=3 + live selection -->
+          <label><input type="checkbox" value="Southampton (Maybush)"> Southampton (Maybush)</label>
+          <label><input type="checkbox" value="Lee On The Solent"> Lee On The Solent</label>
+          <label><input type="checkbox" value="Winchester"> Winchester</label>
+          <label><input type="checkbox" value="Portsmouth"> Portsmouth</label>
+          <label><input type="checkbox" value="Chichester"> Chichester</label>
+          <label><input type="checkbox" value="Isle of Wight (Newport)"> Isle of Wight (Newport)</label>
+        </div>
+        <div class="selected-centres" id="selectedCentres">Selected: none</div>
+        <div class="field-error" id="e_centres"></div>
+
+        <div class="row">
+          <div>
+            <label class="req" for="theoryExpire">Theory Test Expiry</label>
+            <input type="date" id="theoryExpire" name="theoryExpire" required />
+            <div class="field-error" id="e_theoryExpire"></div>
+          </div>
+          <div>
+            <label for="lastAttempt">Last Test Attempt (if any)</label>
+            <input type="date" id="lastAttempt" name="lastAttempt" />
+            <div class="field-error" id="e_lastAttempt"></div>
+          </div>
+        </div>
+
+        <label class="req">Desired Test Date Range</label>
+        <div class="row">
+          <input type="date" name="desiredDateStart" id="desiredDateStart" required />
+          <input type="date" name="desiredDateEnd" id="desiredDateEnd" required />
+        </div>
+        <div class="hint">Range must be at least 15 days. We won’t accept dates past your theory expiry or within 14 days of your last attempt.</div>
+        <div class="field-error" id="e_dateRange"></div>
+
+        <label for="customerComments">Additional Notes</label>
+        <textarea id="customerComments" name="customerComments" placeholder="Any timing constraints, accessibility needs, etc."></textarea>
+
+        <div class="note" style="margin-top:10px">
+          By submitting you agree that payment is only due after we find a slot you confirm.
+        </div>
+
+        <div class="sticky-submit">
+          <button class="btn ripple" id="submitBtn" type="submit">Submit request</button>
+        </div>
+      </form>
+
+      <div id="success" class="success-screen">
+        <h2>Request Submitted</h2>
+        <p>Once we have found a suitable test for you, you will be contacted on your phone number.</p>
+        <div style="margin-top:14px">
+          <a class="btn ripple" href="../track/">Track my booking</a>
+          <a class="btn secondary ripple" href="../">Back to home</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">© 2025 Driving Test Portal</div>
+  </div>
+
+  <script>
+    /* ---------- Helpers ---------- */
+    const $ = (sel, root=document) => root.querySelector(sel);
+    const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+    const errTop = $('#errTop');
+
+    function showTopError(messages){
+      if (!messages || !messages.length){ errTop.style.display='none'; return; }
+      errTop.style.display='block';
+      errTop.innerHTML = messages.map(m => `• ${m}`).join('<br>');
+    }
+    function fieldError(id, msg){
+      const el = $('#e_' + id);
+      if (!el) return;
+      if (msg){ el.textContent = msg; el.style.display='block'; }
+      else { el.textContent = ''; el.style.display='none'; }
+    }
+
+    /* ---------- Tier selection visuals + price preview ---------- */
+    const pricing = { Basic: 100, Premium: 120 };
+    let affiliateDiscount = 0;
+    function updatePrice(){
+      const tier = $('input[name="tier"]:checked')?.value || 'Basic';
+      const price = pricing[tier] - affiliateDiscount;
+      $('#priceHint').textContent = `Current price: £${price}`;
+    }
+    const tierWrap = $('#tierWrap');
+    tierWrap.addEventListener('change', (e) => {
+      if (e.target.name === 'tier'){
+        $$('.pill', tierWrap).forEach(p => p.classList.remove('selected'));
+        e.target.closest('.pill')?.classList.add('selected');
+        updatePrice();
+      }
+    });
+    // Initialize tick/selected
+    $$('.pill', tierWrap).forEach(p => {
+      const input = p.querySelector('input[type="radio"]');
+      if (input.checked) p.classList.add('selected');
+    });
+    updatePrice();
+
+    /* ---------- Centres checklist (max 3) ---------- */
+    const centresBox = $('#centres');
+    const selectedBox = $('#selectedCentres');
+    let chosen = []; // order = priority
+
+    function renderChosen(){
+      if (!chosen.length){ selectedBox.textContent = 'Selected: none'; return; }
+      selectedBox.innerHTML = 'Selected: ' + chosen.map((c, i) =>
+        `<span class="badge"><span class="rank">#${i+1}</span> ${c}</span>`
+      ).join(' ');
+    }
+
+    centresBox.addEventListener('change', (e) => {
+      if (e.target.type !== 'checkbox') return;
+      const val = e.target.value;
+      if (e.target.checked){
+        if (chosen.length >= 3){
+          // Enforce max 3
+          e.target.checked = false;
+          fieldError('centres', 'You can choose up to 3 centres.');
+          return;
+        }
+        fieldError('centres', '');
+        chosen.push(val);
+      } else {
+        chosen = chosen.filter(x => x !== val);
+        fieldError('centres', '');
+      }
+      renderChosen();
+    });
+
+    /* ---------- Affiliate validation (green only on actual acceptance) ---------- */
+    const applyAff = $('#applyAff');
+    const affBar = $('#affBar');
+    const DEMO_VALID_CODES = ['JAMES5', 'TEST5', 'FRIEND5']; // change/remove later
+
+    async function validateAffiliate(code){
+      // TODO: replace with real backend call later. This is intentionally strict.
+      await new Promise(r => setTimeout(r, 200)); // tiny delay to feel real
+      return DEMO_VALID_CODES.includes(code.toUpperCase());
+    }
+
+    applyAff?.addEventListener('click', async () => {
+      const code = ($('#affiliateCode').value || '').trim();
+      affBar.classList.remove('success','error'); void affBar.offsetWidth; // reset animation
+      if (!code){
+        affBar.textContent = 'Please enter a code first.';
+        affBar.classList.add('error');
+        affiliateDiscount = 0;
+        updatePrice();
+        return;
+      }
+      try{
+        const ok = await validateAffiliate(code);
+        if (ok){
+          affBar.textContent = 'Code applied: £5 discount will be deducted at payment.';
+          affBar.classList.add('success');
+          affiliateDiscount = 5;
+          updatePrice();
+        } else {
+          affBar.textContent = 'That code is not valid.';
+          affBar.classList.add('error');
+          affiliateDiscount = 0;
+          updatePrice();
+        }
+      } catch{
+        affBar.textContent = 'Could not check code. Try again.';
+        affBar.classList.add('error');
+      }
+    });
+
+    /* ---------- Form submission & validations ---------- */
+    const form = $('#form');
+    const success = $('#success');
+    const submitBtn = $('#submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errTop.style.display='none';
+      ['fullName','phoneNumber','licenseNumberRef','dvsaRef','theoryExpire','lastAttempt','dateRange','centres'].forEach(id => fieldError(id, ''));
+
+      const messages = [];
+
+      const fullName = $('#fullName').value.trim();
+      if (!fullName){ messages.push('Name is required.'); fieldError('fullName','Please enter your full name.'); }
+
+      const phone = $('#phoneNumber').value.trim();
+      if (!/^0?7\d{9}$/.test(phone)){ messages.push('Enter a valid UK mobile number (07…).'); fieldError('phoneNumber','Enter a valid UK mobile number (07xxxxxxxxx).'); }
+
+      const lic = $('#licenseNumberRef').value.trim();
+      if (!/^[A-Za-z0-9]{6,18}$/.test(lic)){ messages.push('Licence number looks invalid.'); fieldError('licenseNumberRef','Please check your licence number format.'); }
+
+      const dvsa = $('#dvsaRef').value.trim();
+      // Accept formats like A-123-456-789 or 10–12 digits/alphanum
+      const dvsaOk = /^([A-Za-z]-?\d{3}-?\d{3}-?\d{3}|\d{10,12}|[A-Za-z0-9]{10,12})$/.test(dvsa);
+      if (!dvsaOk){ messages.push('DVSA Reference is required and must match common formats.'); fieldError('dvsaRef','Example: A-123-456-789 or a 10–12 digit/character reference.'); }
+
+      // Centres
+      if (chosen.length === 0){ messages.push('Pick at least one test centre.'); fieldError('centres','Please choose at least one centre (up to 3).'); }
+
+      // Dates
+      const s = new Date($('#desiredDateStart').value);
+      const t = new Date($('#desiredDateEnd').value);
+      const theory = new Date($('#theoryExpire').value);
+      const lastStr = $('#lastAttempt').value;
+      const last = lastStr ? new Date(lastStr) : null;
+
+      const diffRangeDays = (t - s) / 86400000;
+      if (isNaN(diffRangeDays) || diffRangeDays < 15){
+        messages.push('Date range must be at least 15 days.'); fieldError('dateRange','Pick a start and end date at least 15 days apart.');
+      }
+      if (theory && t > theory){
+        messages.push('Your range cannot extend past your theory test expiry.'); fieldError('dateRange','End date must be on/before your theory expiry.');
+      }
+      if (last){
+        const minStart = new Date(last.getTime() + 14*86400000);
+        if (s < minStart){
+          const y = minStart.toISOString().slice(0,10);
+          messages.push('Your range starts within 14 days of your last attempt.'); fieldError('dateRange',`Earliest allowed start is ${y}.`);
+        }
+      }
+
+      // If any errors, show summary and stop
+      if (messages.length){
+        showTopError(messages);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      // FRONT-END ONLY for now (no backend POST yet)
+      submitBtn.disabled = true;
+      try {
+        form.style.display='none';
+        success.style.display='block';
+        // (Later: trigger confetti here if you want)
+      } catch(e2){
+        console.error(e2);
+        showTopError(['Something went wrong. Please try again.']);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

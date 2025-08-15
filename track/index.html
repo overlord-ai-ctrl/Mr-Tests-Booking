@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Track My Booking</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="../assets/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="logo">
+      <img src="../assets/logo.svg" alt="Logo" />
+      <span>Driving Test Portal</span>
+    </div>
+    <div class="links">
+      <a class="btn secondary ripple" href="../">Home</a>
+      <a class="btn secondary ripple" href="../change-booking/">Book</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="card">
+      <h2>Track My Booking</h2>
+      <p class="note">Enter your licence number and the last 4 digits of your phone number.</p>
+
+      <div id="warn" class="alert err" style="display:none"></div>
+
+      <form id="trackForm">
+        <label class="req">Licence Number</label>
+        <input name="lic" required placeholder="e.g. DOEJ612345J99AB" />
+
+        <label class="req">Phone last 4 digits</label>
+        <input name="last4" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234" />
+
+        <button class="btn ripple" type="submit" style="margin-top:12px">Check status</button>
+      </form>
+
+      <div id="result" class="card" style="margin-top:14px;display:none">
+        <h3 id="r_title">Status</h3>
+        <p class="note" id="r_text"></p>
+      </div>
+    </div>
+
+    <div class="footer">© 2025 Driving Test Portal</div>
+  </div>
+
+  <script>
+    const form = document.getElementById('trackForm');
+    const box  = document.getElementById('result');
+    const title= document.getElementById('r_title');
+    const text = document.getElementById('r_text');
+    const warn = document.getElementById('warn');
+
+    // Leave backend wiring for later
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      warn.style.display='none';
+      box.style.display='none';
+
+      const fd = new FormData(form);
+      const lic = (fd.get('lic')||'').trim();
+      const last4 = (fd.get('last4')||'').trim();
+
+      if (!lic || !/^[A-Za-z0-9]+$/.test(lic)) { warn.textContent="Please enter a valid licence number."; warn.style.display='block'; return; }
+      if (!/^[0-9]{4}$/.test(last4)) { warn.textContent="Phone last 4 must be exactly 4 digits."; warn.style.display='block'; return; }
+
+      // Mock response for UI until backend is connected
+      const data = { ok:true, id:'B1024', status:'Searching', matchedCentre:'', matchedDate:'', matchedTime:'', price:100, payStatus:'Unpaid' };
+      box.style.display='block';
+      if (data.ok){
+        title.textContent = `Booking ${data.id} — ${data.status}`;
+        const extra = data.matchedCentre ? `Match: ${data.matchedCentre} on ${data.matchedDate} ${data.matchedTime}` : 'We are searching for earlier slots that fit your range.';
+        text.textContent = `${extra} • Price £${data.price} • Payment: ${data.payStatus}`;
+      } else {
+        title.textContent = 'Not found';
+        text.textContent = data.error || 'Please check your details and try again.';
+      }
+    });
+  </script>
+</body>
+</html>
