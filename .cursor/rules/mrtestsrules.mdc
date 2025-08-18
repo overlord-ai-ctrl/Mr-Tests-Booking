@@ -1,0 +1,300 @@
+---
+alwaysApply: true
+---
+
+
+
+
+# Cursor Project Rules (Mr Tests)
+
+## Core principles
+- Make the smallest change that fixes the problem or adds the feature.
+- Never touch secrets; never commit `.env*` or tokens; redact any secrets in logs.
+- Before editing, **search the log** to avoid repeating the same fix or bouncing in circles.
+
+## Required workflow for every edit
+1. **Plan**
+   - Read relevant files + last 50 log entries.
+   - Write a 1–3 line plan in the log entry’s `rationale` before changing code.
+
+2. **Implement**
+   - Keep changes **atomic** and scoped.
+   - If creating files, check first to avoid duplicates; prefer updating existing code.
+   - Follow existing code style; if none, use ESLint + Prettier defaults without disabling rules globally.
+
+3. **Validate locally**
+   - Run: `npm ci` (or `npm i` if lockfile missing), `npm run lint`, `npm run build`.
+   - If any step fails, **revert the change** or fix it before proceeding; record the failure in the log.
+
+4. **Commit & push**
+   - Use **Conventional Commits**:
+     - `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `perf:`, `test:`
+   - One logical change per commit.
+   - Commit message must reference the **log id**.
+
+5. **Deploy & wait (don’t rush)**
+   - Trigger deploy (Render or CI).
+   - **Wait for completion** and run smoke checks (see script below).
+   - If deploy/build fails, collect logs, **rollback** to last green commit, and record everything.
+
+6. **Append a log entry (mandatory)**
+   - Append a **single-line JSON** entry to `log/changes.jsonl` using the template below.
+   - Never edit or delete past entries.
+
+## Logging template (append to `log/changes.jsonl`)
+
+{
+“timestamp”: “”,
+“log_id”: “”,
+“actor”: “cursor”,
+“branch”: “”,
+“commit”: “”,
+“type”: “feat|fix|refactor|docs|chore|perf|test”,
+“files_changed”: [“path/one”, “path/two”],
+“rationale”: “<what/why in 1-3 lines>”,
+“commands_run”: [“npm ci”, “npm run build”, “npm run lint”],
+“deploy”: {
+“provider”: “render”,
+“trigger”: “manual|push”,
+“status”: “success|failed|skipped”,
+“url”: “”,
+“build_id”: “”,
+“checks”: {
+“homepage_http”: 200,
+“health_http”: 200,
+“text_probe”: “OK|missing”
+}
+},
+“result”: “success|rolled_back|needs_followup”,
+“notes”: “<errors, links to logs, or next steps>”
+}
+
+## Commit message format
+
+:  (log:<log_id>)
+
+<body - optional but concise>
+- Affects: <files/feature>
+- Validation: lint ✅ build ✅ smoke ✅
+```
+
+
+Deployment waiting & smoke checks
+	•	After pushing, poll the live site until healthy or timeout.
+	•	Treat any 502/white page/empty body as failure; fetch logs.
+
+scripts/deploy_and_wait.sh (add to repo)
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+SITE_URL="${SITE_URL:-https://mr-tests.example.com}"   # set real URL in CI/Render env
+HEALTH_URL="${HEALTH_URL:-$SITE_URL/health}"
+MAX_WAIT="${MAX_WAIT:-420}"  # seconds
+SLEEP="${SLEEP:-7}"
+
+echo "[deploy] waiting for deployment to become live at $SITE_URL"
+elapsed=0
+status_home=0
+status_health=0
+
+while (( elapsed < MAX_WAIT )); do
+  status_home=$(curl -s -o /dev/null -w "%{http_code}" "$SITE_URL" || echo 000)
+  status_health=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" || echo 000)
+  if [[ "$status_home" == "200" ]] && [[ "$status_health" == "200" ]]; then
+    body=$(curl -s "$SITE_URL" | head -n 20 | tr -d '\r')
+    if echo "$body" | grep -qiE "mr tests|booking|dvsa|mr-tests"; then
+      echo "[deploy] healthy: $SITE_URL"
+      exit 0
+    fi
+  fi
+  sleep "$SLEEP"
+  elapsed=$(( elapsed + SLEEP ))
+done
+
+echo "[deploy] ERROR: site unhealthy (home:$status_home health:$status_health) after ${MAX_WAIT}s"
+exit 1
+
+In CI/Render, run after deploy: bash scripts/deploy_and_wait.sh (ensure SITE_URL/HEALTH_URL env vars are set).
+If your app is static and has no /health, set HEALTH_URL=$SITE_URL.
+
+Failure handling (no loops)
+	•	On failure:
+	•	Capture: build output, last 200 lines of logs, HTTP codes, and a 20-line snippet of homepage.
+	•	Do not apply the same fix twice. Before retrying, read log/changes.jsonl; if a similar change exists with same failure signature, choose a different approach or rollback.
+	•	If two consecutive attempts fail, rollback to last green commit and open a “needs_followup” log entry with a short root-cause hypothesis.
+
+Idempotency rules
+	•	Check existence before creating files, routes, or keys.
+	•	Use file markers/comments to update previously injected blocks.
+	•	Don’t rename or move files unless strictly necessary; log the mapping if you do.
+
+Dependency & tooling rules
+	•	Never upgrade dependencies casually. Pin exact versions; record any bump in the log.
+	•	Don’t add heavy libraries for simple tasks.
+	•	Keep Node version consistent with .nvmrc/engines if present.
+
+Code quality rules
+	•	Lint and build must be clean (no warnings introduced).
+	•	Don’t disable ESLint rules without an inline justification.
+	•	Keep functions small and pure where possible; avoid global side effects.
+
+Repo hygiene
+	•	Only touch files relevant to the task.
+	•	Don’t reformat unrelated files in the same commit.
+	•	Update README.md if commands, env vars, or URLs change.
+
+Post-change invariants (Mr Tests specific)
+	•	DVSA reference: mandatory; validation cannot be bypassed by UI-only changes.
+	•	Affiliate code: only green when code is actually valid (server/whitelist check), not just well-formed.
+	•	Test centres: remain multi-select checklist; name & value formats unchanged so stored data stays compatible.
+	•	Tier UI: clear selected state; no regressions in accessibility (keyboard + screen-reader friendly).
+
+
+
+
+# Cursor Project Rules (Mr Tests)
+
+## Core principles
+- Make the smallest change that fixes the problem or adds the feature.
+- Never touch secrets; never commit `.env*` or tokens; redact any secrets in logs.
+- Before editing, **search the log** to avoid repeating the same fix or bouncing in circles.
+
+## Required workflow for every edit
+1. **Plan**
+   - Read relevant files + last 50 log entries.
+   - Write a 1–3 line plan in the log entry’s `rationale` before changing code.
+
+2. **Implement**
+   - Keep changes **atomic** and scoped.
+   - If creating files, check first to avoid duplicates; prefer updating existing code.
+   - Follow existing code style; if none, use ESLint + Prettier defaults without disabling rules globally.
+
+3. **Validate locally**
+   - Run: `npm ci` (or `npm i` if lockfile missing), `npm run lint`, `npm run build`.
+   - If any step fails, **revert the change** or fix it before proceeding; record the failure in the log.
+
+4. **Commit & push**
+   - Use **Conventional Commits**:
+     - `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `perf:`, `test:`
+   - One logical change per commit.
+   - Commit message must reference the **log id**.
+
+5. **Deploy & wait (don’t rush)**
+   - Trigger deploy (Render or CI).
+   - **Wait for completion** and run smoke checks (see script below).
+   - If deploy/build fails, collect logs, **rollback** to last green commit, and record everything.
+
+6. **Append a log entry (mandatory)**
+   - Append a **single-line JSON** entry to `log/changes.jsonl` using the template below.
+   - Never edit or delete past entries.
+
+## Logging template (append to `log/changes.jsonl`)
+
+{
+“timestamp”: “”,
+“log_id”: “”,
+“actor”: “cursor”,
+“branch”: “”,
+“commit”: “”,
+“type”: “feat|fix|refactor|docs|chore|perf|test”,
+“files_changed”: [“path/one”, “path/two”],
+“rationale”: “<what/why in 1-3 lines>”,
+“commands_run”: [“npm ci”, “npm run build”, “npm run lint”],
+“deploy”: {
+“provider”: “render”,
+“trigger”: “manual|push”,
+“status”: “success|failed|skipped”,
+“url”: “”,
+“build_id”: “”,
+“checks”: {
+“homepage_http”: 200,
+“health_http”: 200,
+“text_probe”: “OK|missing”
+}
+},
+“result”: “success|rolled_back|needs_followup”,
+“notes”: “<errors, links to logs, or next steps>”
+}
+
+## Commit message format
+
+:  (log:<log_id>)
+
+<body - optional but concise>
+- Affects: <files/feature>
+- Validation: lint ✅ build ✅ smoke ✅
+```
+
+
+Deployment waiting & smoke checks
+	•	After pushing, poll the live site until healthy or timeout.
+	•	Treat any 502/white page/empty body as failure; fetch logs.
+
+scripts/deploy_and_wait.sh (add to repo)
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+SITE_URL="${SITE_URL:-https://mr-tests.example.com}"   # set real URL in CI/Render env
+HEALTH_URL="${HEALTH_URL:-$SITE_URL/health}"
+MAX_WAIT="${MAX_WAIT:-420}"  # seconds
+SLEEP="${SLEEP:-7}"
+
+echo "[deploy] waiting for deployment to become live at $SITE_URL"
+elapsed=0
+status_home=0
+status_health=0
+
+while (( elapsed < MAX_WAIT )); do
+  status_home=$(curl -s -o /dev/null -w "%{http_code}" "$SITE_URL" || echo 000)
+  status_health=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" || echo 000)
+  if [[ "$status_home" == "200" ]] && [[ "$status_health" == "200" ]]; then
+    body=$(curl -s "$SITE_URL" | head -n 20 | tr -d '\r')
+    if echo "$body" | grep -qiE "mr tests|booking|dvsa|mr-tests"; then
+      echo "[deploy] healthy: $SITE_URL"
+      exit 0
+    fi
+  fi
+  sleep "$SLEEP"
+  elapsed=$(( elapsed + SLEEP ))
+done
+
+echo "[deploy] ERROR: site unhealthy (home:$status_home health:$status_health) after ${MAX_WAIT}s"
+exit 1
+
+In CI/Render, run after deploy: bash scripts/deploy_and_wait.sh (ensure SITE_URL/HEALTH_URL env vars are set).
+If your app is static and has no /health, set HEALTH_URL=$SITE_URL.
+
+Failure handling (no loops)
+	•	On failure:
+	•	Capture: build output, last 200 lines of logs, HTTP codes, and a 20-line snippet of homepage.
+	•	Do not apply the same fix twice. Before retrying, read log/changes.jsonl; if a similar change exists with same failure signature, choose a different approach or rollback.
+	•	If two consecutive attempts fail, rollback to last green commit and open a “needs_followup” log entry with a short root-cause hypothesis.
+
+Idempotency rules
+	•	Check existence before creating files, routes, or keys.
+	•	Use file markers/comments to update previously injected blocks.
+	•	Don’t rename or move files unless strictly necessary; log the mapping if you do.
+
+Dependency & tooling rules
+	•	Never upgrade dependencies casually. Pin exact versions; record any bump in the log.
+	•	Don’t add heavy libraries for simple tasks.
+	•	Keep Node version consistent with .nvmrc/engines if present.
+
+Code quality rules
+	•	Lint and build must be clean (no warnings introduced).
+	•	Don’t disable ESLint rules without an inline justification.
+	•	Keep functions small and pure where possible; avoid global side effects.
+
+Repo hygiene
+	•	Only touch files relevant to the task.
+	•	Don’t reformat unrelated files in the same commit.
+	•	Update README.md if commands, env vars, or URLs change.
+
+Post-change invariants (Mr Tests specific)
+	•	DVSA reference: mandatory; validation cannot be bypassed by UI-only changes.
+	•	Affiliate code: only green when code is actually valid (server/whitelist check), not just well-formed.
+	•	Test centres: remain multi-select checklist; name & value formats unchanged so stored data stays compatible.
+	•	Tier UI: clear selected state; no regressions in accessibility (keyboard + screen-reader friendly).
+

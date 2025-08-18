@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Mr Tests · Admin</title>
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <header>
+    <h1>Mr Tests — Admin</h1>
+    <p>Append Preferred Test Centres</p>
+  </header>
+
+  <section class="panel">
+    <div class="row">
+      <input id="token" type="password" placeholder="Admin token"/>
+      <button id="load">Load centres</button>
+      <span id="status" class="muted"></span>
+    </div>
+
+    <div id="centresBox" class="list">
+      <div class="placeholder">Centres will appear here after loading…</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Add a new centre</h2>
+    <div class="row">
+      <input id="newName" type="text" placeholder="Name e.g. London - Wood Green"/>
+      <input id="newId" type="text" placeholder="Optional ID (auto if blank)"/>
+      <button id="append">Append</button>
+    </div>
+    <div id="appendStatus" class="muted"></div>
+  </section>
+
+  <footer>
+    <small>Changes commit to GitHub → redeploys the static site automatically.</small>
+  </footer>
+
+  <script>
+    // If you want to hard-set the API host (cross-origin), uncomment and set:
+    // window.__ADMIN_API__ = 'https://YOUR-ADMIN-API.onrender.com';
+  </script>
+  <script src="/admin/admin.js" defer></script>
+</body>
+</html>

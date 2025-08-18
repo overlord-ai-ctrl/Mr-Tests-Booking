@@ -1,0 +1,15 @@
+:root { --gap: 10px; }
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; line-height: 1.4; }
+header h1 { margin: 0 0 4px; }
+header p { margin: 0 0 16px; color: #555; }
+.panel { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; background: #fafafa; }
+.row { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: center; }
+input[type="text"], input[type="password"] { padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; min-width: 260px; }
+button { padding: 10px 14px; border: 0; border-radius: 6px; background: black; color: white; cursor: pointer; }
+button:disabled { background: #999; cursor: not-allowed; }
+.list { padding: 8px; background: white; border: 1px solid #eee; border-radius: 6px; min-height: 60px; }
+.placeholder { color: #777; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
+.muted { color: #666; }
+footer { margin-top: 24px; color: #666; }
