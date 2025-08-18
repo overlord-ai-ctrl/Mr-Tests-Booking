@@ -74,6 +74,14 @@ async function saveAdminMap(nextMap) {
   }
 }
 
+// Derive pages from role
+function pagesFromRole(role) {
+  return role === 'master' ? ['*'] : ['centres'];
+}
+function roleFromPages(pages) {
+  return (Array.isArray(pages) && pages.includes('*')) ? 'master' : 'booker';
+}
+
 // Update resolveAdmin to read from file
 async function resolveAdminAsync(token) {
   if (!token) return null;
@@ -82,7 +90,9 @@ async function resolveAdminAsync(token) {
   const entry = map[token];
   if (!entry) return null;
   const name = typeof entry === "string" ? entry : (entry.name || "Admin");
-  const pages = (entry && Array.isArray(entry.pages)) ? entry.pages : ["*"];
+  let pages = (entry && Array.isArray(entry.pages)) ? entry.pages : undefined;
+  const role = (entry && typeof entry.role === "string") ? entry.role : undefined;
+  if (!pages) pages = pagesFromRole(role || 'booker');
   return { name, pages };
 }
 
@@ -123,7 +133,14 @@ app.get("/api/me", auth, (req, res) => {
 app.get("/api/admin-codes", auth, requirePage("admins"), async (_req, res) => {
   try {
     const map = await loadAdminMap();
-    res.json({ codes: map });
+    const out = {};
+    for (const [k, v] of Object.entries(map)) {
+      const name = v?.name || 'Admin';
+      const pages = Array.isArray(v?.pages) ? v.pages : pagesFromRole(v?.role || 'booker');
+      const role = typeof v?.role === 'string' ? v.role : roleFromPages(pages);
+      out[k] = { name, pages, role };
+    }
+    res.json({ codes: out });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to load admin codes" });
@@ -132,20 +149,27 @@ app.get("/api/admin-codes", auth, requirePage("admins"), async (_req, res) => {
 
 app.put("/api/admin-codes", auth, requirePage("admins"), async (req, res) => {
   try {
-    const { mode = "append", code, name, pages } = req.body || {};
+    const { mode = "append", code, name, role, pages } = req.body || {};
     if (mode !== "append") return res.status(400).json({ error: "Only append mode allowed" });
     if (typeof code !== "string" || !code.trim()) return res.status(400).json({ error: "code required" });
     if (typeof name !== "string" || !name.trim()) return res.status(400).json({ error: "name required" });
-    if (!Array.isArray(pages) || pages.some(p => typeof p !== "string" || !p.trim())) {
-      return res.status(400).json({ error: "pages must be array of strings" });
-    }
+
     const safeCode = code.trim();
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(safeCode)) return res.status(400).json({ error: "invalid code format" });
 
+    let roleNorm = (typeof role === 'string' ? role.trim().toLowerCase() : '');
+    if (roleNorm && !['master','booker'].includes(roleNorm)) {
+      return res.status(400).json({ error: "invalid role" });
+    }
+    if (!roleNorm) roleNorm = 'booker';
+
+    let pagesArr = Array.isArray(pages) ? pages.map(p => String(p).trim()).filter(Boolean) : [];
+    if (!pagesArr.length) pagesArr = pagesFromRole(roleNorm);
+
     const map = await loadAdminMap();
     if (map[safeCode]) return res.status(400).json({ error: "code already exists" });
-    map[safeCode] = { name: name.trim(), pages: pages.map(p => p.trim()) };
 
+    map[safeCode] = { name: name.trim(), pages: pagesArr, role: roleNorm };
     await saveAdminMap(map);
     res.json({ ok: true });
   } catch (e) {

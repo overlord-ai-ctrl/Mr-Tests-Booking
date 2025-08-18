@@ -126,7 +126,8 @@
         const name = document.createElement("div"); name.textContent = (info?.name || "Admin") + " — ";
         const codeBadge = document.createElement("span"); codeBadge.className="badge"; codeBadge.textContent = code;
         const pages = document.createElement("span"); pages.className="badge"; pages.textContent = (info?.pages||[]).join(",");
-        row.append(name, codeBadge, pages); list.appendChild(row);
+        const roleBadge = document.createElement("span"); roleBadge.className="badge"; roleBadge.textContent = (info?.role) || ((info?.pages||[]).includes('*') ? 'master' : 'booker');
+        row.append(name, codeBadge, pages, roleBadge); list.appendChild(row);
       });
       status("codesStatus","Loaded",true);
     } catch (e) { console.error(e); status("codesStatus","Failed to load"); }
@@ -135,17 +136,18 @@
   async function addCode() {
     const code = document.getElementById("newCode").value.trim();
     const name = document.getElementById("newAdminName").value.trim();
+    const role = document.getElementById("newRole").value;
     const pages = document.getElementById("newPages").value.split(",").map(s=>s.trim()).filter(Boolean);
     if (!code) return status("addCodeStatus","Code required");
     if (!name) return status("addCodeStatus","Name required");
-    if (!pages.length) return status("addCodeStatus","At least one page required");
     status("addCodeStatus","Saving…");
     try {
-      await api("/api/admin-codes","PUT",{ mode:"append", code, name, pages });
+      await api("/api/admin-codes","PUT",{ mode:"append", code, name, pages, role });
       status("addCodeStatus","Added ✓",true);
       document.getElementById("newCode").value = "";
       document.getElementById("newAdminName").value = "";
       document.getElementById("newPages").value = "";
+      document.getElementById("newRole").value = "booker";
       loadCodes();
     } catch (e) { console.error(e); status("addCodeStatus","Failed to add"); }
   }
