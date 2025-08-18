@@ -1,3 +1,17 @@
 {
-  "1212": { "name": "George", "pages": ["centres", "admins"], "role": "master" }
+  "1212": {
+    "name": "George",
+    "pages": [
+      "centres",
+      "admins"
+    ],
+    "role": "master"
+  },
+  "2222": {
+    "name": "Chinese",
+    "pages": [
+      "centres"
+    ],
+    "role": "booker"
+  }
 }
