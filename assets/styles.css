@@ -171,3 +171,28 @@ textarea{min-height:90px}
 @media (prefers-reduced-motion: reduce){
   .btn, .btn::after { transition: none; animation: none !important; }
 }
+
+/* Admin panel */
+.admin-toggle{
+  position: fixed; top: 14px; left: 14px; z-index: 1000;
+  width: 34px; height: 34px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text);
+  background: #0b1018; border: 1px solid var(--edge);
+  cursor: pointer; transition: transform .08s ease, filter .2s ease, background-color .2s ease;
+}
+.admin-toggle:active{ transform: scale(.98); }
+.admin-toggle:focus-visible{ outline:0; box-shadow: 0 0 0 3px rgba(68,83,230,.35); }
+
+.admin-panel{
+  position: fixed; top: 56px; left: 14px; width: 320px; max-width: calc(100% - 28px);
+  background: var(--card); border: 1px solid var(--edge); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  transform: translateY(-12px); opacity: 0; pointer-events: none;
+  transition: transform .18s ease, opacity .18s ease;
+  z-index: 999;
+}
+.admin-panel.open{ transform: translateY(0); opacity: 1; pointer-events: auto; }
+.admin-panel header{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--edge); }
+.admin-panel header span{ font-weight:800; letter-spacing:.3px; }
+.admin-panel .body{ padding:12px; }
