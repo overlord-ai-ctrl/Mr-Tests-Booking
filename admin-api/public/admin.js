@@ -31,6 +31,33 @@
     });
   }
 
+  function showNav() {
+    const pages = ME?.pages || [];
+    const all = pages.includes("*");
+    const nav = document.getElementById("nav");
+    if (!nav) return;
+    const links = nav.querySelectorAll("a[data-nav]");
+    let anyVisible = false;
+    links.forEach(a => {
+      const tag = a.getAttribute("data-nav");
+      const can = all || pages.includes(tag);
+      a.style.display = can ? "inline-flex" : "none";
+      anyVisible ||= can;
+      a.onclick = (e) => {
+        e.preventDefault();
+        document.querySelectorAll("a[data-nav]").forEach(x => x.classList.remove("active"));
+        a.classList.add("active");
+        document.querySelectorAll("[data-page]").forEach(sec => {
+          sec.hidden = sec.getAttribute("data-page") !== tag;
+        });
+      };
+    });
+    nav.hidden = !anyVisible;
+    // auto-select first visible link
+    const first = Array.from(links).find(a => a.style.display !== "none");
+    if (first) first.click();
+  }
+
   async function unlock() {
     TOKEN = q("#token").value.trim();
     if (!TOKEN) return status("authStatus", "Code required");
@@ -39,6 +66,7 @@
       sessionStorage.setItem("mrtests_admin_token", TOKEN);
       q("#authGate").hidden = true; q("#app").hidden = false;
       applyVisibility();
+      showNav();
       status("authStatus", "Unlocked ✓", true);
     } catch (e) {
       console.error(e);
@@ -81,12 +109,55 @@
     } catch (e) { console.error(e); status("appendStatus","Failed to append"); }
   }
 
+  async function loadCodes() {
+    status("codesStatus","Loading…");
+    try {
+      const data = await api("/api/admin-codes","GET");
+      const list = document.getElementById("codesList");
+      const map = data.codes || {};
+      list.innerHTML = "";
+      const entries = Object.entries(map);
+      if (!entries.length) {
+        list.innerHTML = '<div class="placeholder">No codes yet.</div>';
+        return status("codesStatus","Loaded",true);
+      }
+      entries.forEach(([code, info]) => {
+        const row = document.createElement("div"); row.className="row";
+        const name = document.createElement("div"); name.textContent = (info?.name || "Admin") + " — ";
+        const codeBadge = document.createElement("span"); codeBadge.className="badge"; codeBadge.textContent = code;
+        const pages = document.createElement("span"); pages.className="badge"; pages.textContent = (info?.pages||[]).join(",");
+        row.append(name, codeBadge, pages); list.appendChild(row);
+      });
+      status("codesStatus","Loaded",true);
+    } catch (e) { console.error(e); status("codesStatus","Failed to load"); }
+  }
+
+  async function addCode() {
+    const code = document.getElementById("newCode").value.trim();
+    const name = document.getElementById("newAdminName").value.trim();
+    const pages = document.getElementById("newPages").value.split(",").map(s=>s.trim()).filter(Boolean);
+    if (!code) return status("addCodeStatus","Code required");
+    if (!name) return status("addCodeStatus","Name required");
+    if (!pages.length) return status("addCodeStatus","At least one page required");
+    status("addCodeStatus","Saving…");
+    try {
+      await api("/api/admin-codes","PUT",{ mode:"append", code, name, pages });
+      status("addCodeStatus","Added ✓",true);
+      document.getElementById("newCode").value = "";
+      document.getElementById("newAdminName").value = "";
+      document.getElementById("newPages").value = "";
+      loadCodes();
+    } catch (e) { console.error(e); status("addCodeStatus","Failed to add"); }
+  }
+
   window.addEventListener("DOMContentLoaded", () => {
     const saved = sessionStorage.getItem("mrtests_admin_token");
     if (saved) { q("#token").value = saved; }
     q("#unlock").onclick = unlock;
     q("#load").onclick = loadCentres;
     q("#append").onclick = appendCentre;
+    document.getElementById("loadCodes").onclick = loadCodes;
+    document.getElementById("addCode").onclick = addCode;
     if (saved) unlock();
   });
 })();

@@ -15,3 +15,6 @@ button:disabled { background: #999; cursor: not-allowed; }
 .placeholder { color: #777; }
 .muted { color: #666; }
 .hint { color: #777; font-size: 12px; }
+.nav { display:flex; gap:10px; margin: 0 0 12px; }
+.nav a { text-decoration:none; padding:6px 10px; border:1px solid #ddd; border-radius:6px; }
+.nav a.active { background:#000; color:#fff; border-color:#000; }

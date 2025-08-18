@@ -28,6 +28,11 @@
 
   <!-- App (hidden until authed) -->
   <main id="app" hidden>
+    <nav id="nav" class="nav" hidden>
+      <a href="#" data-nav="centres">Centres</a>
+      <a href="#" data-nav="admins">Admin Codes</a>
+    </nav>
+
     <section class="panel" data-page="centres">
       <h2>Preferred Test Centres</h2>
       <div class="row">
@@ -43,6 +48,24 @@
         <input id="newId" type="text" placeholder="Optional ID (auto if blank)"/>
         <button id="append">Append</button>
         <span id="appendStatus" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="panel" data-page="admins" hidden>
+      <h2>Admin Codes</h2>
+      <div class="row">
+        <button id="loadCodes">Load codes</button>
+        <span id="codesStatus" class="muted"></span>
+      </div>
+      <div id="codesList" class="list"><div class="placeholder">Codes will appear here…</div></div>
+
+      <h3>Add a new admin</h3>
+      <div class="row">
+        <input id="newCode" type="text" placeholder="Code (e.g. 7777 or alice-1)"/>
+        <input id="newAdminName" type="text" placeholder="Name e.g. Alice"/>
+        <input id="newPages" type="text" placeholder='Pages (comma separated, e.g. centres,affiliates)'/>
+        <button id="addCode">Add code</button>
+        <span id="addCodeStatus" class="muted"></span>
       </div>
     </section>
   </main>
