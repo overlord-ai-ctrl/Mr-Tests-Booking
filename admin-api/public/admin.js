@@ -1,89 +1,92 @@
 (() => {
-  const qs = s => document.querySelector(s);
-  const API_BASE = window.__ADMIN_API__ || ''; // same-origin by default
-  const endpoints = {
-    get: API_BASE + '/api/test-centres',
-    put: API_BASE + '/api/test-centres'
-  };
-  let ADMIN_TOKEN = '';
-  let cached = [];
+  const q = (s) => document.querySelector(s);
+  const API = ""; // same-origin
+  let TOKEN = "";
+  let ME = null;
 
-  const status = (txt, ok=false) => {
-    const el = qs('#status');
-    el.textContent = txt || '';
-    el.style.color = ok ? 'green' : '#666';
+  const status = (id, txt, ok=false) => {
+    const el = q("#" + id);
+    if (!el) return;
+    el.textContent = txt || "";
+    el.style.color = ok ? "green" : "#666";
   };
-  const appendStatus = (txt, ok=false) => {
-    const el = qs('#appendStatus');
-    el.textContent = txt || '';
-    el.style.color = ok ? 'green' : '#666';
-  };
-  const renderList = () => {
-    const box = qs('#centresBox');
-    box.innerHTML = '';
-    if (!cached.length) {
-      const d = document.createElement('div');
-      d.className = 'placeholder';
-      d.textContent = 'No centres yet.';
-      box.appendChild(d);
-      return;
-    }
-    cached.forEach(c => {
-      const row = document.createElement('div');
-      row.className = 'row';
-      const name = document.createElement('div'); name.textContent = c.name;
-      const id = document.createElement('span'); id.className = 'badge'; id.textContent = c.id;
-      row.appendChild(name); row.appendChild(id);
-      box.appendChild(row);
-    });
-  };
+  const slug = (s) => s.toLowerCase().replace(/&/g,"and").replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
 
-  async function api(method, body) {
-    const headers = { 'Content-Type': 'application/json' };
-    if (ADMIN_TOKEN) headers['Authorization'] = `Bearer ${ADMIN_TOKEN}`;
-    const res = await fetch(method === 'GET' ? endpoints.get : endpoints.put, {
-      method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store'
+  async function api(path, method="GET", body) {
+    const headers = { "Content-Type": "application/json" };
+    if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
+    const res = await fetch(API + path, {
+      method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store"
     });
-    if (!res.ok) {
-      const text = await res.text().catch(()=> '');
-      throw new Error(`${method} ${res.status}: ${text}`);
-    }
+    if (!res.ok) { let t=""; try{t=await res.text();}catch{} throw new Error(`${method} ${path} ${res.status} ${t}`); }
     return res.json();
   }
 
-  window.addEventListener('DOMContentLoaded', () => {
-    qs('#load').onclick = async () => {
-      try {
-        ADMIN_TOKEN = qs('#token').value.trim();
-        status('Loading…');
-        const data = await api('GET');
-        cached = data.centres || [];
-        renderList();
-        status('Loaded', true);
-      } catch (e) { console.error(e); status(e.message); }
-    };
+  function applyVisibility() {
+    if (ME?.name) { q("#userName").textContent = ME.name; q("#userBox").hidden = false; }
+    const pages = ME?.pages || ["*"]; const all = pages.includes("*");
+    document.querySelectorAll("[data-page]").forEach(sec => {
+      const tag = sec.getAttribute("data-page") || "";
+      sec.hidden = !all && !pages.includes(tag);
+    });
+  }
 
-    qs('#append').onclick = async () => {
-      try {
-        const nameEl = qs('#newName');
-        const idEl = qs('#newId');
-        const name = nameEl.value.trim();
-        let id = idEl.value.trim();
-        if (!name) return appendStatus('Name required');
-        if (!id) {
-          id = name.toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
-        }
-        // local duplicate guard
-        if (cached.some(c => c.id === id)) return appendStatus('ID already exists');
-        appendStatus('Saving…');
-        const payload = { mode: 'append', centres: [{ id, name }] };
-        const resp = await api('PUT', payload);
-        // optimistic update
-        cached.push({ id, name });
-        renderList();
-        nameEl.value = ''; idEl.value = '';
-        appendStatus('Appended & committed ✔', true);
-      } catch (e) { console.error(e); appendStatus(e.message); }
-    };
+  async function unlock() {
+    TOKEN = q("#token").value.trim();
+    if (!TOKEN) return status("authStatus", "Code required");
+    try {
+      ME = await api("/api/me", "GET");
+      sessionStorage.setItem("mrtests_admin_token", TOKEN);
+      q("#authGate").hidden = true; q("#app").hidden = false;
+      applyVisibility();
+      status("authStatus", "Unlocked ✓", true);
+    } catch (e) {
+      console.error(e);
+      status("authStatus", "Invalid code");
+      TOKEN = ""; ME = null;
+      q("#app").hidden = true; q("#authGate").hidden = false;
+    }
+  }
+
+  async function loadCentres() {
+    status("status", "Loading…");
+    try {
+      const data = await api("/api/test-centres", "GET");
+      const centres = data.centres || [];
+      const box = q("#centresBox"); box.innerHTML = "";
+      if (!centres.length) { box.innerHTML = '<div class="placeholder">No centres yet.</div>'; status("status","Loaded",true); return; }
+      centres.forEach(c => {
+        const row = document.createElement("div"); row.className="row";
+        const name = document.createElement("div"); name.textContent = c.name;
+        const id = document.createElement("span"); id.className = "badge"; id.textContent = c.id;
+        row.append(name, id); box.appendChild(row);
+      });
+      status("status","Loaded",true);
+    } catch (e) { console.error(e); status("status","Failed to load"); }
+  }
+
+  async function appendCentre() {
+    const nameEl = q("#newName"), idEl = q("#newId");
+    const name = (nameEl.value||"").trim(); let id = (idEl.value||"").trim();
+    if (!name) return status("appendStatus","Name required");
+    if (!id) id = slug(name);
+    status("appendStatus","Saving…");
+    try {
+      await api("/api/test-centres","PUT",{ mode:"append", centres:[{ id, name }] });
+      const row = document.createElement("div"); row.className="row";
+      const nameDiv = document.createElement("div"); nameDiv.textContent = name;
+      const idSpan = document.createElement("span"); idSpan.className="badge"; idSpan.textContent = id;
+      row.append(nameDiv, idSpan); q("#centresBox").appendChild(row);
+      nameEl.value=""; idEl.value=""; status("appendStatus","Appended & committed ✓", true);
+    } catch (e) { console.error(e); status("appendStatus","Failed to append"); }
+  }
+
+  window.addEventListener("DOMContentLoaded", () => {
+    const saved = sessionStorage.getItem("mrtests_admin_token");
+    if (saved) { q("#token").value = saved; }
+    q("#unlock").onclick = unlock;
+    q("#load").onclick = loadCentres;
+    q("#append").onclick = appendCentre;
+    if (saved) unlock();
   });
 })();

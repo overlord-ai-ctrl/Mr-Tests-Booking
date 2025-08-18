@@ -7,41 +7,46 @@
   <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body>
-  <header>
+  <header class="app-header">
     <h1>Mr Tests — Admin</h1>
-    <p>Append Preferred Test Centres</p>
+    <div class="spacer"></div>
+    <div id="userBox" class="user-box" hidden>
+      <span id="userName" class="user-name"></span>
+    </div>
   </header>
 
-  <section class="panel">
+  <!-- Auth gate -->
+  <section id="authGate" class="panel auth">
+    <h2>Enter admin code</h2>
     <div class="row">
-      <input id="token" type="password" placeholder="Admin token"/>
-      <button id="load">Load centres</button>
-      <span id="status" class="muted"></span>
+      <input id="token" type="password" placeholder="Admin code"/>
+      <button id="unlock">Unlock</button>
+      <span id="authStatus" class="muted"></span>
     </div>
-
-    <div id="centresBox" class="list">
-      <div class="placeholder">Centres will appear here after loading…</div>
-    </div>
+    <p class="hint">Codes are personal. Your code decides which pages you see.</p>
   </section>
 
-  <section class="panel">
-    <h2>Add a new centre</h2>
-    <div class="row">
-      <input id="newName" type="text" placeholder="Name e.g. London - Wood Green"/>
-      <input id="newId" type="text" placeholder="Optional ID (auto if blank)"/>
-      <button id="append">Append</button>
-    </div>
-    <div id="appendStatus" class="muted"></div>
-  </section>
+  <!-- App (hidden until authed) -->
+  <main id="app" hidden>
+    <section class="panel" data-page="centres">
+      <h2>Preferred Test Centres</h2>
+      <div class="row">
+        <button id="load">Load centres</button>
+        <span id="status" class="muted"></span>
+      </div>
+      <div id="centresBox" class="list">
+        <div class="placeholder">Centres will appear here…</div>
+      </div>
+      <h3>Add a new centre</h3>
+      <div class="row">
+        <input id="newName" type="text" placeholder="Name e.g. London - Wood Green"/>
+        <input id="newId" type="text" placeholder="Optional ID (auto if blank)"/>
+        <button id="append">Append</button>
+        <span id="appendStatus" class="muted"></span>
+      </div>
+    </section>
+  </main>
 
-  <footer>
-    <small>Changes commit to GitHub → redeploys the static site automatically.</small>
-  </footer>
-
-  <script>
-    // If you want to hard-set the API host (cross-origin), uncomment and set:
-    // window.__ADMIN_API__ = 'https://YOUR-ADMIN-API.onrender.com';
-  </script>
   <script src="/admin/admin.js" defer></script>
 </body>
 </html>
