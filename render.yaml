@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: mr-tests-admin-api
+    env: node
+    buildCommand: cd admin-api && npm ci
+    startCommand: cd admin-api && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: REPO_OWNER
+        value: overlord-ai-ctrl
+      - key: REPO_NAME
+        value: Mr-Tests-Booking
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://mr-tests-booking-ok33.onrender.com

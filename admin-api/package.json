@@ -2,7 +2,11 @@
   "name": "mr-tests-admin-api",
   "type": "module",
   "private": true,
-  "scripts": { "start": "node server.js" },
+  "scripts": { 
+    "start": "node server.js",
+    "build": "echo 'No build step required'",
+    "deploy": "./deploy.sh"
+  },
   "dependencies": {
     "express": "^4.19.2",
     "@octokit/rest": "^20.1.1",
