@@ -33,7 +33,12 @@ app.get('/', (_req, res) => {
 });
 
 // Serve admin UI
-app.use('/admin', express.static(new URL('./public', import.meta.url).pathname));
+app.use('/admin', express.static('./public'));
+
+// Serve admin.html at /admin/
+app.get('/admin/', (_req, res) => {
+  res.sendFile('./public/admin.html', { root: '.' });
+});
 
 // Auth
 function auth(req, res, next) {
