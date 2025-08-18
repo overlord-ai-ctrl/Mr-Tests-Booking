@@ -2,8 +2,9 @@ services:
   - type: web
     name: mr-tests-admin-api
     env: node
-    buildCommand: cd admin-api && npm ci
-    startCommand: cd admin-api && npm start
+    rootDir: admin-api
+    buildCommand: npm ci
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
