@@ -105,14 +105,8 @@
         <div class="hint" id="priceHint">Current price: £100</div>
 
         <label class="req">Preferred Test Centres (choose up to 3)</label>
-        <div class="centres" id="centres">
-          <!-- Add/remove options freely; JS handles max=3 + live selection -->
-          <label><input type="checkbox" value="Southampton (Maybush)"> Southampton (Maybush)</label>
-          <label><input type="checkbox" value="Lee On The Solent"> Lee On The Solent</label>
-          <label><input type="checkbox" value="Winchester"> Winchester</label>
-          <label><input type="checkbox" value="Portsmouth"> Portsmouth</label>
-          <label><input type="checkbox" value="Chichester"> Chichester</label>
-          <label><input type="checkbox" value="Isle of Wight (Newport)"> Isle of Wight (Newport)</label>
+        <div data-centres-container>
+          <p>Loading test centres…</p>
         </div>
         <div class="selected-centres" id="selectedCentres">Selected: none</div>
         <div class="field-error" id="e_centres"></div>
@@ -205,7 +199,6 @@
     updatePrice();
 
     /* ---------- Centres checklist (max 3) ---------- */
-    const centresBox = $('#centres');
     const selectedBox = $('#selectedCentres');
     let chosen = []; // order = priority
 
@@ -216,8 +209,9 @@
       ).join(' ');
     }
 
-    centresBox.addEventListener('change', (e) => {
-      if (e.target.type !== 'checkbox') return;
+    // Listen for changes on dynamically loaded centres
+    document.addEventListener('change', (e) => {
+      if (e.target.type !== 'checkbox' || !e.target.name.includes('preferredTestCentres')) return;
       const val = e.target.value;
       if (e.target.checked){
         if (chosen.length >= 3){
@@ -347,5 +341,6 @@
       }
     });
   </script>
+  <script src="../assets/js/centres.js" defer></script>
 </body>
 </html>
