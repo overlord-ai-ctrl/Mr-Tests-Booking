@@ -27,6 +27,11 @@ else app.use(cors());
 // Body
 app.use(express.json({ limit: '256kb' }));
 
+// Root redirect to admin
+app.get('/', (_req, res) => {
+  res.redirect('/admin');
+});
+
 // Serve admin UI
 app.use('/admin', express.static(new URL('./public', import.meta.url).pathname));
 
