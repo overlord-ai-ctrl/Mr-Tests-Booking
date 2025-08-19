@@ -409,10 +409,8 @@
 
   // Render offer panel for claimed/offered jobs
   function renderOfferPanel(j) {
-    const panel = document.createElement('div');
-    panel.className = 'mt-3 p-3 border rounded';
-    panel.style.borderColor = '#e0e6ed';
-    panel.style.backgroundColor = '#f8fafc';
+    const container = document.createElement('div');
+    container.className = 'offer-container mt-3';
 
     const status = String(j.status || '').toLowerCase();
     const isOffered = status === 'offered';
@@ -420,9 +418,12 @@
     const isConfirmed = status === 'confirmed_yes';
     const isDeclined = status === 'confirmed_no';
 
-    // Status badge and countdown
+    // Header with status badge and countdown
+    const header = document.createElement('div');
+    header.className = 'offer-header';
+    
     const statusRow = document.createElement('div');
-    statusRow.className = 'd-flex align-items-center gap-2 mb-2';
+    statusRow.className = 'd-flex align-items-center gap-2';
     
     let statusBadge;
     if (isConfirmed) {
@@ -465,7 +466,12 @@
       updateCountdown();
     }
 
-    panel.appendChild(statusRow);
+    header.appendChild(statusRow);
+    container.appendChild(header);
+
+    // Content area
+    const content = document.createElement('div');
+    content.className = 'offer-content';
 
     // Offer form (only for claimed jobs or expired offers)
     if (status === 'claimed' || isExpired) {
@@ -473,8 +479,11 @@
       form.className = 'offer-grid';
       
       // Centre select
+      const centreField = document.createElement('div');
+      centreField.className = 'offer-field';
+      const centreLabel = document.createElement('label');
+      centreLabel.textContent = 'Test Centre';
       const centreSelect = document.createElement('select');
-      centreSelect.className = 'form-control form-control-sm';
       centreSelect.innerHTML = '<option value="">Select centre...</option>';
       // Populate with centres from coverage
       COVERAGE.forEach(centreId => {
@@ -483,33 +492,80 @@
         option.textContent = centreId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         centreSelect.appendChild(option);
       });
+      centreField.append(centreLabel, centreSelect);
       
       // Date input
+      const dateField = document.createElement('div');
+      dateField.className = 'offer-field';
+      const dateLabel = document.createElement('label');
+      dateLabel.textContent = 'Date';
       const dateInput = document.createElement('input');
       dateInput.type = 'date';
-      dateInput.className = 'form-control form-control-sm';
+      dateField.append(dateLabel, dateInput);
       
       // Time input
+      const timeField = document.createElement('div');
+      timeField.className = 'offer-field';
+      const timeLabel = document.createElement('label');
+      timeLabel.textContent = 'Time';
       const timeInput = document.createElement('input');
       timeInput.type = 'time';
-      timeInput.className = 'form-control form-control-sm';
+      timeField.append(timeLabel, timeInput);
       
       // Note textarea
+      const noteField = document.createElement('div');
+      noteField.className = 'offer-field';
+      noteField.style.gridColumn = '1 / -1';
+      const noteLabel = document.createElement('label');
+      noteLabel.textContent = 'Note (optional)';
       const noteInput = document.createElement('textarea');
-      noteInput.className = 'form-control form-control-sm';
-      noteInput.placeholder = 'Note (optional)';
-      noteInput.rows = 2;
+      noteInput.placeholder = 'Add a personal message for the client...';
+      noteInput.rows = 3;
+      noteField.append(noteLabel, noteInput);
       
-      form.append(centreSelect, dateInput, timeInput, noteInput);
-      panel.appendChild(form);
+      form.append(centreField, dateField, timeField, noteField);
+      content.appendChild(form);
+    }
+
+    // Manual reply buttons for offered/expired jobs
+    if (isOffered || isExpired) {
+      const replySection = document.createElement('div');
+      replySection.className = 'mb-3';
       
-      // Action buttons
+      const replyTitle = document.createElement('h6');
+      replyTitle.className = 'mb-2';
+      replyTitle.textContent = 'Manual Client Reply';
+      replySection.appendChild(replyTitle);
+      
+      const replyActions = document.createElement('div');
+      replyActions.className = 'd-flex gap-2';
+      
+      const yesBtn = btn('Mark as YES', 'success');
+      yesBtn.onclick = () => markClientReply(j.id, 'YES');
+      
+      const noBtn = btn('Mark as NO', 'outline-danger');
+      noBtn.onclick = () => markClientReply(j.id, 'NO');
+      
+      replyActions.append(yesBtn, noBtn);
+      replySection.appendChild(replyActions);
+      content.appendChild(replySection);
+    }
+
+    container.appendChild(content);
+
+    // Action buttons (pinned to bottom)
+    if (status === 'claimed' || isExpired) {
       const actions = document.createElement('div');
       actions.className = 'offer-actions';
       
       if (status === 'claimed') {
         const sendBtn = btn('Send to Client', 'primary');
         sendBtn.onclick = () => {
+          const centreSelect = content.querySelector('select');
+          const dateInput = content.querySelector('input[type="date"]');
+          const timeInput = content.querySelector('input[type="time"]');
+          const noteInput = content.querySelector('textarea');
+          
           if (!centreSelect.value || !dateInput.value || !timeInput.value) {
             alert('Please fill in centre, date, and time');
             return;
@@ -539,27 +595,10 @@
         actions.append(nudgeBtn, extendBtn, releaseBtn);
       }
       
-      panel.appendChild(actions);
+      container.appendChild(actions);
     }
 
-    // Manual reply buttons for offered/expired jobs
-    if (isOffered || isExpired) {
-      const replyActions = document.createElement('div');
-      replyActions.className = 'offer-actions mt-2';
-      replyActions.style.borderTop = '1px solid #e0e6ed';
-      replyActions.style.paddingTop = '8px';
-      
-      const yesBtn = btn('Mark as YES', 'success');
-      yesBtn.onclick = () => markClientReply(j.id, 'YES');
-      
-      const noBtn = btn('Mark as NO', 'outline-danger');
-      noBtn.onclick = () => markClientReply(j.id, 'NO');
-      
-      replyActions.append(yesBtn, noBtn);
-      panel.appendChild(replyActions);
-    }
-
-    return panel;
+    return container;
   }
 
   // Show tiny skeletons while loading
