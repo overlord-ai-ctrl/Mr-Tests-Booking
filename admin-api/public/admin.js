@@ -366,7 +366,7 @@
       
       if (!filteredJobs.length) {
         if (COVERAGE.size === 0) {
-          list.innerHTML = '<div class="placeholder">No preferred centres set. Add centres in Profile/Centres to see jobs.</div>';
+          list.innerHTML = '<div class="placeholder">Set your preferred centres in Profile to see matching jobs.</div>';
         } else {
           list.innerHTML = '<div class="placeholder">No open jobs in your coverage area.</div>';
         }

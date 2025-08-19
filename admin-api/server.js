@@ -766,29 +766,31 @@ app.get('/api/jobs/board', auth, async (req, res) => {
     const q = String(req.query.q || '');
     
     // Get coverage for this token
-    const coverage = await getCoverageForToken(token);
-    
-    // If no coverage, return empty list (security: don't leak all jobs)
-    if (!coverage.length) {
-      return res.json({ jobs: [] });
-    }
+    const coverageArr = await getCoverageForToken(token);
+    const coverage = new Set(coverageArr);
     
     const data = await JobCache.getOrSet(['board','open',token,q,limit,offset], () =>
       jobsGet({ status:'open', assigned_to:'', q, limit, offset })
     );
     
     // Filter jobs by coverage with fallback logic
-    const allJobs = Array.isArray(data.jobs) ? data.jobs : [];
-    const coverageSet = new Set(coverage);
-    const filteredJobs = allJobs.filter(job => {
+    const raw = Array.isArray(data.jobs) ? data.jobs : [];
+    const filtered = coverage.size === 0 ? [] : raw.filter(job => {
       // Prefer explicit centre_id; else centre_name; else first desired
-      const cidRaw = job.centre_id || job.centre_name || 
+      const rawCid = job.centre_id || job.centre_name || 
         (job.desired_centres ? String(job.desired_centres).split(',')[0] : '');
-      const cid = normCentreId(cidRaw);
-      return coverageSet.has(cid);
+      const cid = normCentreId(rawCid);
+      return coverage.has(cid);
     });
     
-    res.json({ jobs: filteredJobs });
+    res.json({ 
+      jobs: filtered, 
+      _meta: { 
+        raw: raw.length, 
+        after_filter: filtered.length, 
+        coverage: coverageArr 
+      } 
+    });
   } catch(e){ console.error(e); res.status(502).json({ error:'Failed to load jobs' }); }
 });
 
