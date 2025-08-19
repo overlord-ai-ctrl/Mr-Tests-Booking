@@ -84,6 +84,10 @@ async function getCoverageForToken(token) {
       if (tokenData && Array.isArray(tokenData.coverage)) {
         return tokenData.coverage.map(normCentreId).filter(Boolean);
       }
+      // Also check for 'centres' field (legacy support)
+      if (tokenData && Array.isArray(tokenData.centres)) {
+        return tokenData.centres.map(normCentreId).filter(Boolean);
+      }
     } catch (e) {
       if (e.status !== 404) console.warn('Admin tokens read error:', e.message);
     }
