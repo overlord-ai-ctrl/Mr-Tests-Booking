@@ -287,26 +287,38 @@
   }
 
   function showOnlyBookerTabs(){
+    console.log('Showing booker tabs');
     const q = (sel)=>Array.from(document.querySelectorAll(sel));
     // Always show these four for bookers:
     ['centres','profile','jobs','myjobs'].forEach(key=>{
       const el = document.querySelector(`[data-nav="${key}"]`)?.closest('li, .nav-item') || document.querySelector(`[data-nav="${key}"]`);
-      el?.classList.remove('d-none');
+      if (el) {
+        el.classList.remove('d-none');
+        console.log(`Showing tab: ${key}`);
+      } else {
+        console.log(`Tab not found: ${key}`);
+      }
     });
     // Hide Admin Codes:
     const adminEl = document.querySelector('[data-nav="admins"]')?.closest('li, .nav-item') || document.querySelector('[data-nav="admins"]');
-    adminEl?.classList.add('d-none');
+    if (adminEl) {
+      adminEl.classList.add('d-none');
+      console.log('Hiding Admin Codes tab');
+    }
   }
 
   function setActiveTab(key){
+    console.log('Setting active tab:', key);
     // generic tab switcher that also loads data
     document.querySelectorAll('#nav .nav-link').forEach(a=>{
       const on = a.dataset.nav === key;
       a.classList.toggle('active', on);
     });
     document.querySelectorAll('[data-page]').forEach(p=>{
-      const on = p.getAttribute('data-page') === key;
+      const pageKey = p.getAttribute('data-page');
+      const on = pageKey === key;
       p.hidden = !on;
+      console.log(`Page ${pageKey}: ${on ? 'show' : 'hide'}`);
     });
     // call loaders
     if (key === 'jobs') loadJobs?.();
@@ -323,7 +335,7 @@
     }
     
     // call this after successful unlock
-    if (isMaster && isMaster()) {
+    if (isMaster()) {
       // masters see everything; ensure all tabs visible
       document.querySelectorAll('#nav .nav-link').forEach(a=> a.closest('li, .nav-item')?.classList.remove('d-none'));
     } else {
@@ -373,7 +385,7 @@
       if (typeof loadCodes === 'function' && isMaster()) loadCodes();
       
       // Default landing for bookers: Jobs Board
-      if (!(isMaster && isMaster())) {
+      if (!isMaster()) {
         setActiveTab('jobs');
         // Warm up My Jobs in background (optional)
         setTimeout(()=>loadMyJobs?.(), 300);
