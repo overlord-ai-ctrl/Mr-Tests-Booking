@@ -22,6 +22,11 @@
     return res.json();
   }
 
+  function isMaster() {
+    const pages = ME?.pages || [];
+    return pages.includes('*') || pages.includes('admins');
+  }
+
   function applyVisibility() {
     if (ME?.name) { q("#userName").textContent = ME.name; q("#userBox").hidden = false; }
     const pages = ME?.pages || ["*"]; const all = pages.includes("*");
@@ -87,10 +92,71 @@
         const row = document.createElement("div"); row.className="row";
         const name = document.createElement("div"); name.textContent = c.name;
         const id = document.createElement("span"); id.className = "badge"; id.textContent = c.id;
-        row.append(name, id); box.appendChild(row);
+        row.append(name, id);
+        
+        // Add delete button for masters
+        const del = document.createElement('button');
+        del.textContent = 'Delete';
+        del.className = 'danger';
+        del.onclick = () => deleteCentre(c.id);
+        if (!isMaster()) del.style.display = 'none';
+        row.appendChild(del);
+        
+        box.appendChild(row);
       });
       status("status","Loaded",true);
+      
+      // Build coverage checklist after centres load
+      buildCoverageChecklist(centres);
     } catch (e) { console.error(e); status("status","Failed to load"); }
+  }
+
+  async function deleteCentre(id) {
+    if (!confirm(`Delete centre "${id}"?`)) return;
+    status('status','Deleting…');
+    try {
+      await api('/api/test-centres','PUT',{ mode:'delete', ids:[id] });
+      // remove from UI
+      const box = document.getElementById('centresBox');
+      [...box.querySelectorAll('.row')].forEach(row => {
+        if (row.querySelector('.badge')?.textContent === id) row.remove();
+      });
+      status('status','Deleted ✓',true);
+      // also uncheck/remove from My coverage
+      const chk = document.querySelector(`#myCoverageBox input[value="${id}"]`);
+      if (chk && chk.closest('.row')) chk.closest('.row').remove();
+    } catch (e) { console.error(e); status('status','Failed to delete'); }
+  }
+
+  async function buildCoverageChecklist(centres) {
+    const box = document.getElementById('myCoverageBox');
+    box.innerHTML = '<div class="placeholder">Loading my coverage…</div>';
+    try {
+      const mine = await api('/api/my-centres','GET');
+      const selected = new Set((mine?.centres)||[]);
+      box.innerHTML = '';
+      centres.forEach(c => {
+        const row = document.createElement('div'); row.className='row';
+        const input = document.createElement('input'); input.type='checkbox'; input.value=c.id;
+        input.name='myCoverage[]'; input.id=`cov-${c.id}`; if (selected.has(c.id)) input.checked = true;
+        const label = document.createElement('label'); label.htmlFor=`cov-${c.id}`; label.textContent = ` ${c.name} `;
+        const tag = document.createElement('span'); tag.className='badge'; tag.textContent=c.id;
+        row.append(input,label,tag);
+        box.appendChild(row);
+      });
+    } catch (e) {
+      console.error(e);
+      box.innerHTML = '<div class="placeholder">Failed to load coverage.</div>';
+    }
+  }
+
+  async function saveCoverage() {
+    const chosen = [...document.querySelectorAll('#myCoverageBox input[name="myCoverage[]"]:checked')].map(i=>i.value);
+    status('coverageStatus','Saving…');
+    try {
+      await api('/api/my-centres','PUT',{ centres: chosen });
+      status('coverageStatus','Saved ✓',true);
+    } catch (e) { console.error(e); status('coverageStatus','Failed to save'); }
   }
 
   async function appendCentre() {
@@ -104,31 +170,59 @@
       const row = document.createElement("div"); row.className="row";
       const nameDiv = document.createElement("div"); nameDiv.textContent = name;
       const idSpan = document.createElement("span"); idSpan.className="badge"; idSpan.textContent = id;
-      row.append(nameDiv, idSpan); q("#centresBox").appendChild(row);
+      row.append(nameDiv, idSpan);
+      
+      // Add delete button for masters
+      const del = document.createElement('button');
+      del.textContent = 'Delete';
+      del.className = 'danger';
+      del.onclick = () => deleteCentre(id);
+      if (!isMaster()) del.style.display = 'none';
+      row.appendChild(del);
+      
+      q("#centresBox").appendChild(row);
       nameEl.value=""; idEl.value=""; status("appendStatus","Appended & committed ✓", true);
     } catch (e) { console.error(e); status("appendStatus","Failed to append"); }
+  }
+
+  function renderCodesList(map) {
+    const list = document.getElementById('codesList');
+    list.innerHTML = '';
+    const entries = Object.entries(map);
+    if (!entries.length) { list.innerHTML = '<div class="placeholder">No codes yet.</div>'; return; }
+    entries.forEach(([code, info]) => {
+      const row = document.createElement('div'); row.className='row';
+      const name = document.createElement('div'); name.textContent = (info?.name || 'Admin');
+      const codeBadge = document.createElement('span'); codeBadge.className='badge'; codeBadge.textContent = code;
+      const pagesBadge = document.createElement('span'); pagesBadge.className='badge'; pagesBadge.textContent = (info?.pages||[]).join(',');
+      const roleBadge = document.createElement('span'); roleBadge.className='badge'; roleBadge.textContent = info?.role || ((info?.pages||[]).includes('*') ? 'master' : 'booker');
+      row.append(name, codeBadge, pagesBadge, roleBadge);
+      if (isMaster()) {
+        const del = document.createElement('button'); del.textContent = 'Delete'; del.className='danger';
+        del.onclick = () => deleteAdminCode(code);
+        row.append(del);
+      }
+      list.appendChild(row);
+    });
+  }
+
+  async function deleteAdminCode(code) {
+    if (!confirm(`Delete admin code "${code}"?`)) return;
+    status('codesStatus','Deleting…');
+    try {
+      await api('/api/admin-codes','PUT',{ mode:'delete', code });
+      status('codesStatus','Deleted ✓',true);
+      // refresh list
+      loadCodes();
+    } catch (e) { console.error(e); status('codesStatus','Failed to delete'); }
   }
 
   async function loadCodes() {
     status("codesStatus","Loading…");
     try {
       const data = await api("/api/admin-codes","GET");
-      const list = document.getElementById("codesList");
       const map = data.codes || {};
-      list.innerHTML = "";
-      const entries = Object.entries(map);
-      if (!entries.length) {
-        list.innerHTML = '<div class="placeholder">No codes yet.</div>';
-        return status("codesStatus","Loaded",true);
-      }
-      entries.forEach(([code, info]) => {
-        const row = document.createElement("div"); row.className="row";
-        const name = document.createElement("div"); name.textContent = (info?.name || "Admin") + " — ";
-        const codeBadge = document.createElement("span"); codeBadge.className="badge"; codeBadge.textContent = code;
-        const pages = document.createElement("span"); pages.className="badge"; pages.textContent = (info?.pages||[]).join(",");
-        const roleBadge = document.createElement("span"); roleBadge.className="badge"; roleBadge.textContent = (info?.role) || ((info?.pages||[]).includes('*') ? 'master' : 'booker');
-        row.append(name, codeBadge, pages, roleBadge); list.appendChild(row);
-      });
+      renderCodesList(map);
       status("codesStatus","Loaded",true);
     } catch (e) { console.error(e); status("codesStatus","Failed to load"); }
   }
@@ -160,6 +254,7 @@
     q("#append").onclick = appendCentre;
     document.getElementById("loadCodes").onclick = loadCodes;
     document.getElementById("addCode").onclick = addCode;
+    document.getElementById('saveCoverage').onclick = saveCoverage;
     if (saved) unlock();
   });
 })();

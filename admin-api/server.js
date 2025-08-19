@@ -150,31 +150,43 @@ app.get("/api/admin-codes", auth, requirePage("admins"), async (_req, res) => {
 app.put("/api/admin-codes", auth, requirePage("admins"), async (req, res) => {
   try {
     const { mode = "append", code, name, role, pages } = req.body || {};
-    if (mode !== "append") return res.status(400).json({ error: "Only append mode allowed" });
-    if (typeof code !== "string" || !code.trim()) return res.status(400).json({ error: "code required" });
-    if (typeof name !== "string" || !name.trim()) return res.status(400).json({ error: "name required" });
+    if (mode === "append") {
+      if (typeof code !== "string" || !code.trim()) return res.status(400).json({ error: "code required" });
+      if (typeof name !== "string" || !name.trim()) return res.status(400).json({ error: "name required" });
 
-    const safeCode = code.trim();
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(safeCode)) return res.status(400).json({ error: "invalid code format" });
+      const safeCode = code.trim();
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(safeCode)) return res.status(400).json({ error: "invalid code format" });
 
-    let roleNorm = (typeof role === 'string' ? role.trim().toLowerCase() : '');
-    if (roleNorm && !['master','booker'].includes(roleNorm)) {
-      return res.status(400).json({ error: "invalid role" });
+      let roleNorm = (typeof role === 'string' ? role.trim().toLowerCase() : '');
+      if (roleNorm && !['master','booker'].includes(roleNorm)) {
+        return res.status(400).json({ error: "invalid role" });
+      }
+      if (!roleNorm) roleNorm = 'booker';
+
+      let pagesArr = Array.isArray(pages) ? pages.map(p => String(p).trim()).filter(Boolean) : [];
+      if (!pagesArr.length) pagesArr = pagesFromRole(roleNorm);
+
+      const map = await loadAdminMap();
+      if (map[safeCode]) return res.status(400).json({ error: "code already exists" });
+
+      map[safeCode] = { name: name.trim(), pages: pagesArr, role: roleNorm };
+      await saveAdminMap(map);
+      return res.json({ ok: true });
     }
-    if (!roleNorm) roleNorm = 'booker';
-
-    let pagesArr = Array.isArray(pages) ? pages.map(p => String(p).trim()).filter(Boolean) : [];
-    if (!pagesArr.length) pagesArr = pagesFromRole(roleNorm);
-
-    const map = await loadAdminMap();
-    if (map[safeCode]) return res.status(400).json({ error: "code already exists" });
-
-    map[safeCode] = { name: name.trim(), pages: pagesArr, role: roleNorm };
-    await saveAdminMap(map);
-    res.json({ ok: true });
+    if (mode === "delete") {
+      const { code } = req.body || {};
+      if (typeof code !== "string" || !code.trim()) return res.status(400).json({ error: "code required" });
+      const safe = code.trim();
+      const map = await loadAdminMap();
+      if (!map[safe]) return res.status(404).json({ error: "code not found" });
+      delete map[safe];
+      await saveAdminMap(map);
+      return res.json({ ok: true });
+    }
+    return res.status(400).json({ error: "unsupported mode" });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: "Failed to save admin code" });
+    res.status(500).json({ error: "Failed to update admin codes" });
   }
 });
 
@@ -209,6 +221,22 @@ app.get("/api/test-centres", auth, async (_req, res) => {
 app.put("/api/test-centres", auth, async (req, res) => {
   try {
     const mode = req.body?.mode || "append";
+    if (mode === "delete") {
+      // require master
+      if (!req.adminInfo?.pages?.includes("*") && !req.adminInfo?.pages?.includes("admins")) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const ids = req.body?.ids;
+      if (!Array.isArray(ids) || ids.some(x => typeof x !== "string" || !x.trim())) {
+        return res.status(400).json({ error: "ids[] required" });
+      }
+      const { json: existing } = await getFile();
+      const remove = new Set(ids.map(s => s.trim()));
+      const next = existing.filter(c => !remove.has(c.id));
+      if (next.length === existing.length) return res.json({ ok: true, count: next.length, removed: 0 });
+      await putFile(next);
+      return res.json({ ok: true, count: next.length, removed: existing.length - next.length });
+    }
     if (mode !== "append") return res.status(400).json({ error: "Only append mode allowed" });
     const centres = req.body?.centres;
     if (!Array.isArray(centres) || !centres.length) return res.status(400).json({ error: "centres[] required" });
@@ -220,6 +248,41 @@ app.put("/api/test-centres", auth, async (req, res) => {
     await putFile(existing.concat(items));
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: "Failed to append centres" }); }
+});
+
+// NEW: My coverage endpoints
+app.get("/api/my-centres", auth, async (req, res) => {
+  try {
+    const map = await loadAdminMap();
+    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
+    const entry = map[token] || {};
+    const centres = Array.isArray(entry.centres) ? entry.centres : [];
+    res.json({ centres });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to load coverage" });
+  }
+});
+
+app.put("/api/my-centres", auth, async (req, res) => {
+  try {
+    const list = req.body?.centres;
+    if (!Array.isArray(list) || list.some(x => typeof x !== "string" || !x.trim())) {
+      return res.status(400).json({ error: "centres must be array of ids" });
+    }
+    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
+    const map = await loadAdminMap();
+    if (!map[token]) {
+      // create minimal entry if missing (rare)
+      map[token] = { name: req.adminInfo?.name || "Admin", role: req.adminInfo?.role || "booker", pages: req.adminInfo?.pages || ["centres"] };
+    }
+    map[token].centres = Array.from(new Set(list.map(s => s.trim())));
+    await saveAdminMap(map);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to save coverage" });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
