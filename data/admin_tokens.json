@@ -8,7 +8,11 @@
     "role": "master",
     "notes": "",
     "maxDaily": 10,
-    "available": true
+    "available": true,
+    "centres": [
+      "london-wood-green",
+      "london-mill-hill"
+    ]
   },
   "1231": {
     "name": "Nicola",
