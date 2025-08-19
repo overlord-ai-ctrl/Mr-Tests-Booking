@@ -56,6 +56,39 @@ function parsePage(req){
   return { limit, offset };
 }
 
+// Helper to get coverage for a token
+async function getCoverageForToken(token) {
+  try {
+    // First try: data/admin_coverage/<token>.json
+    try {
+      const { json } = await ghGetJson(`data/admin_coverage/${token}.json`);
+      if (json && Array.isArray(json.centres)) {
+        return json.centres;
+      }
+    } catch (e) {
+      if (e.status !== 404) console.warn('Coverage file read error:', e.message);
+    }
+    
+    // Second try: data/admin_tokens.json with per-token coverage
+    try {
+      const { json } = await ghGetJson("data/admin_tokens.json");
+      const tokenData = json[token];
+      if (tokenData && Array.isArray(tokenData.coverage)) {
+        return tokenData.coverage;
+      }
+    } catch (e) {
+      if (e.status !== 404) console.warn('Admin tokens read error:', e.message);
+    }
+    
+    // Default: empty coverage
+    console.warn(`No coverage found for token ${token}, defaulting to empty`);
+    return [];
+  } catch (e) {
+    console.error('Coverage lookup failed:', e.message);
+    return [];
+  }
+}
+
 // Rate limiting system for job claims
 const RateLimiter = (() => {
   const buckets = new Map();
@@ -723,10 +756,27 @@ app.get('/api/jobs/board', auth, async (req, res) => {
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
     const { limit, offset } = parsePage(req);
     const q = String(req.query.q || '');
+    
+    // Get coverage for this token
+    const coverage = await getCoverageForToken(token);
+    
+    // If no coverage, return empty list (security: don't leak all jobs)
+    if (!coverage.length) {
+      return res.json({ jobs: [] });
+    }
+    
     const data = await JobCache.getOrSet(['board','open',token,q,limit,offset], () =>
       jobsGet({ status:'open', assigned_to:'', q, limit, offset })
     );
-    res.json({ jobs: Array.isArray(data.jobs)? data.jobs : [] });
+    
+    // Filter jobs by coverage
+    const allJobs = Array.isArray(data.jobs) ? data.jobs : [];
+    const filteredJobs = allJobs.filter(job => {
+      const jobCentreId = job.centre_id || job.matched_centre;
+      return coverage.includes(jobCentreId);
+    });
+    
+    res.json({ jobs: filteredJobs });
   } catch(e){ console.error(e); res.status(502).json({ error:'Failed to load jobs' }); }
 });
 

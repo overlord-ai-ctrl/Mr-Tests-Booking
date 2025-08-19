@@ -6,6 +6,7 @@
   let currentCentresSha = null;
   let currentBinSha = null;
   let binLoaded = false;
+  let COVERAGE = new Set(); // Coverage centre IDs for filtering
 
   const status = (id, txt, ok=false) => {
     const el = q("#" + id);
@@ -175,7 +176,13 @@
     let anyVisible = false;
     links.forEach(a => {
       const tag = a.getAttribute("data-nav");
-      const can = all || pages.includes(tag);
+      let can = all || pages.includes(tag);
+      
+      // Hide Admin Codes for non-master users
+      if (tag === 'admins' && !isMaster()) {
+        can = false;
+      }
+      
       a.style.display = can ? "inline-flex" : "none";
       anyVisible ||= can;
       a.onclick = (e) => {
@@ -266,7 +273,37 @@
     const right = document.createElement('div'); right.className = 'job-actions';
     right.append(statusBadge(j.status));
     actions.forEach(a => right.appendChild(a));
-    card.append(title, right, meta);
+    
+    // Add details section
+    const details = document.createElement('details');
+    details.className = 'job-details';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Details';
+    details.appendChild(summary);
+    
+    const dl = document.createElement('dl');
+    const fields = [
+      ['Student Name', j.candidate],
+      ['Phone', j.phone],
+      ['Licence Number', j.licence_number],
+      ['DVSA Ref', j.dvsa_ref],
+      ['Theory Expiry', j.theory_expiry],
+      ['Desired Centres', j.desired_centres],
+      ['Desired Range', j.desired_range],
+      ['Notes', j.notes]
+    ];
+    
+    fields.forEach(([label, value]) => {
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = value || '—';
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    });
+    
+    details.appendChild(dl);
+    card.append(title, right, meta, details);
     return card;
   }
 
@@ -308,12 +345,24 @@
       if (prefetch) return; // Don't render if prefetching
       
       list.innerHTML = '';
-      if (!jobs.length) {
-        list.innerHTML = '<div class="placeholder">No open jobs.</div>';
+      
+      // Client-side coverage filtering (belt-and-braces)
+      const filteredJobs = jobs.filter(job => {
+        if (COVERAGE.size === 0) return false; // No coverage = no jobs
+        const jobCentreId = job.centre_id || job.matched_centre;
+        return COVERAGE.has(jobCentreId);
+      });
+      
+      if (!filteredJobs.length) {
+        if (COVERAGE.size === 0) {
+          list.innerHTML = '<div class="placeholder">No preferred centres set. Add centres in Profile/Centres to see jobs.</div>';
+        } else {
+          list.innerHTML = '<div class="placeholder">No open jobs in your coverage area.</div>';
+        }
         status?.('jobsStatus','Loaded',true);
         return;
       }
-      jobs.forEach(j=>{
+      filteredJobs.forEach(j=>{
         const claim = btn?.('Claim','success');
         if (claim) claim.onclick = async () => {
           try { await api('/api/jobs/claim','POST',{ job_id:j.id }); pulse?.(claim); loadJobs(); loadMyJobs?.(); }
@@ -619,6 +668,11 @@
     try{
       const mine = await api('/api/my-centres','GET');
       const ids = new Set(mine?.centres || []);
+      
+      // Update global coverage Set for filtering
+      COVERAGE.clear();
+      ids.forEach(id => COVERAGE.add(id));
+      
       const res = await api('/api/test-centres','GET');
       const centres = res?.centres || [];
       const ul = document.getElementById('profileCentres');

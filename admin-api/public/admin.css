@@ -344,3 +344,61 @@ body.dark .btn-light:hover {
   padding: 0.25rem 0.5rem;
   border-radius: 6px;
 }
+
+/* Job details styles */
+.job-details {
+  margin-top: 8px;
+  border-top: 1px solid #e0e6ed;
+  padding-top: 8px;
+}
+
+.job-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #012970;
+  margin-bottom: 8px;
+}
+
+.job-details summary:hover {
+  color: #0056b3;
+}
+
+.job-details dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 0.875rem;
+}
+
+.job-details dt {
+  font-weight: 600;
+  color: #6c757d;
+  margin: 0;
+}
+
+.job-details dd {
+  margin: 0;
+  color: #012970;
+}
+
+/* Dark mode job details */
+body.dark .job-details {
+  border-top-color: #4a5568;
+}
+
+body.dark .job-details summary {
+  color: #63b3ed;
+}
+
+body.dark .job-details summary:hover {
+  color: #90cdf4;
+}
+
+body.dark .job-details dt {
+  color: #a0aec0;
+}
+
+body.dark .job-details dd {
+  color: #e7ecff;
+}
