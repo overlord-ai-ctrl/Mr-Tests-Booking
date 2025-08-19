@@ -44,6 +44,49 @@
         padding-top: 10px; margin-top: 18px;
       }
     }
+
+    /* Loading overlay and error styles */
+    .submit-overlay { 
+      position:fixed; 
+      inset:0; 
+      background:rgba(255,255,255,0.9); 
+      display:flex; 
+      align-items:center; 
+      justify-content:center; 
+      z-index:9999; 
+    }
+    .submit-overlay.hidden { 
+      display:none; 
+    }
+    .submit-overlay .box { 
+      background:#fff; 
+      border:1px solid #e5e7eb; 
+      border-radius:12px; 
+      padding:18px 22px; 
+      box-shadow:0 10px 24px rgba(0,0,0,.08); 
+      text-align:center; 
+    }
+    .spinner { 
+      width:28px; 
+      height:28px; 
+      border:3px solid #e5e7eb; 
+      border-top-color:#4154f1; 
+      border-radius:50%; 
+      animation:spin 1s linear infinite; 
+      margin:0 auto 8px; 
+    }
+    @keyframes spin { 
+      to { transform: rotate(360deg); } 
+    }
+    .err-inline { 
+      background:#fdecea; 
+      color:#611a15; 
+      border:1px solid #f5c2c7; 
+      padding:8px 10px; 
+      border-radius:8px; 
+      margin-top:10px; 
+      font-weight:600; 
+    }
   </style>
 </head>
 <body>
@@ -269,6 +312,14 @@
       }
     });
 
+    /* ---------- Loading overlay helpers ---------- */
+    const overlay = $('#submitOverlay');
+    const errBox = $('#formError') || (()=>{ const d=document.createElement('div'); d.id='formError'; d.className='err-inline'; form?.prepend(d); return d; })();
+
+    function showOverlay(){ overlay?.classList.remove('hidden'); }
+    function hideOverlay(){ overlay?.classList.add('hidden'); }
+    function showFormErr(msg){ if(!errBox) return; errBox.textContent = msg; errBox.style.display='block'; setTimeout(()=>{ errBox.style.display='none'; }, 5000); }
+
     /* ---------- Form submission & validations ---------- */
     const form = $('#form');
     const success = $('#success');
@@ -327,8 +378,10 @@
         return;
       }
 
-      // Submit to API
-      submitBtn.disabled = true;
+      // Submit to API with loading overlay
+      showOverlay();
+      if (submitBtn){ submitBtn.disabled = true; submitBtn.setAttribute('aria-busy','true'); }
+      
       try {
         const API_BASE = 'https://mr-tests-booking-admin.onrender.com';
         const booking = {
@@ -351,25 +404,36 @@
           headers:{'Content-Type':'application/json'}, 
           body: JSON.stringify(booking)
         });
-        const data = await r.json();
         
-        if (!r.ok || !data.ok) { 
-          throw new Error(data.error || 'Could not submit booking.');
+        const txt = await r.text(); 
+        let data;
+        try{ data = JSON.parse(txt); }catch{ data = { raw: txt }; }
+        
+        if (!r.ok || !data?.ok) { 
+          showFormErr(data?.error || 'Submit failed. Please try again.');
+          return;
         }
         
-        // Redirect to thank you page
+        // Success -> redirect to thank-you
         window.location.href = `/thank-you.html?ref=${encodeURIComponent(data.booking_id)}`;
         
-      } catch(e2){
-        console.error(e2);
-        showTopError([e2.message || 'Something went wrong. Please try again.']);
-        form.style.display='block';
-        success.style.display='none';
+      } catch(err){
+        showFormErr('Network error. Please try again.');
+        console.error(err);
       } finally {
-        submitBtn.disabled = false;
+        hideOverlay();
+        if (submitBtn){ submitBtn.disabled = false; submitBtn.removeAttribute('aria-busy'); }
       }
     });
   </script>
   <script src="../assets/js/centres.js" defer></script>
+  
+  <!-- Loading overlay -->
+  <div id="submitOverlay" class="submit-overlay hidden" aria-live="assertive" aria-busy="true">
+    <div class="box">
+      <div class="spinner"></div>
+      <div class="txt">Submitting your request…</div>
+    </div>
+  </div>
 </body>
 </html>

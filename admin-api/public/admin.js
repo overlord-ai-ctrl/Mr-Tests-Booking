@@ -201,6 +201,16 @@
     return { showError, hideError, setLastRequest };
   })();
 
+  // Simple error bar helpers
+  function showErr(msg='Something went wrong. Please try again.'){
+    const el = document.getElementById('errBar'); if(!el) return;
+    el.textContent = msg;
+    el.classList.remove('d-none');
+    clearTimeout(showErr._t);
+    showErr._t = setTimeout(()=>el.classList.add('d-none'), 4000);
+  }
+  function hideErr(){ document.getElementById('errBar')?.classList.add('d-none'); }
+
   // Enhanced API with error handling, rate limit backoff, and idempotency
   async function api(path, method="GET", body, actionKey = null) {
     const headers = { "Content-Type": "application/json" };
@@ -256,6 +266,7 @@
       }
       
       ErrorHandler.hideError();
+      hideErr(); // Hide simple error bar on success
       return res.json();
     };
     
@@ -263,6 +274,7 @@
       return await makeRequest();
     } catch (e) {
       console.error('API error:', e);
+      showErr(e?.message || 'Request failed. Please retry.');
       ErrorHandler.showError();
       ErrorHandler.setLastRequest(() => api(path, method, body, actionKey));
       throw e;
@@ -763,6 +775,7 @@
         loadMyJobs?.();
       } catch(e) {
         BusyOverlay.hide();
+        showErr('Failed to claim job. Please try again.');
         showToast('Failed to claim job. Please try again.', 'error');
         console.error('Claim error:', e);
       }
@@ -802,6 +815,7 @@
         loadJobs?.();
       } catch(e) {
         BusyOverlay.hide();
+        showErr('Failed to complete job. Please try again.');
         showToast('Failed to complete job. Please try again.', 'error');
         console.error('Complete error:', e);
       }
@@ -839,6 +853,7 @@
         loadJobs?.();
       } catch(e) {
         BusyOverlay.hide();
+        showErr('Failed to send offer. Please try again.');
         showToast('Failed to send offer. Please try again.', 'error');
         console.error('Offer error:', e);
       }
@@ -863,6 +878,7 @@
         
         showToast('Nudge sent ✓', 'success');
       } catch(e) {
+        showErr('Failed to send nudge. Please try again.');
         showToast('Failed to send nudge. Please try again.', 'error');
         console.error('Nudge error:', e);
       }
@@ -889,6 +905,7 @@
         loadMyJobs?.();
         loadJobs?.();
       } catch(e) {
+        showErr('Failed to extend offer. Please try again.');
         showToast('Failed to extend offer. Please try again.', 'error');
         console.error('Extend error:', e);
       }
@@ -915,6 +932,7 @@
         loadMyJobs?.();
         loadJobs?.();
       } catch(e) {
+        showErr('Failed to mark reply. Please try again.');
         showToast('Failed to mark reply. Please try again.', 'error');
         console.error('Mark reply error:', e);
       }

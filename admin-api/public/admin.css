@@ -830,3 +830,20 @@ body.dark .screen-busy-box {
     width: 100%;
   }
 }
+
+/* ===== SIMPLE ERROR BAR ===== */
+.errbar { 
+  position: sticky; 
+  top: 0; 
+  z-index: 1000; 
+  background:#fdecea; 
+  color:#611a15; 
+  border:1px solid #f5c2c7; 
+  padding:10px 12px; 
+  border-radius:8px; 
+  margin-bottom:10px; 
+  font-weight:600; 
+}
+.errbar.d-none { 
+  display:none; 
+}
