@@ -1,7 +1,8 @@
 [
   {
     "id": "london-wood-green",
-    "name": "London - Wood Green"
+    "name": "London - Wood Green",
+    "deleted": true
   },
   {
     "id": "london-mill-hill",
