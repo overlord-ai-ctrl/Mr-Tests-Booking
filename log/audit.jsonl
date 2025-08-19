@@ -60,5 +60,22 @@
       "name": "Preston",
       "role": "master"
     }
+  },
+  {
+    "timestamp": "2025-08-19T20:54:35.807Z",
+    "actor": "Admin",
+    "action": "coverage.set",
+    "target": "admin_tokens.json",
+    "beforeSha": null,
+    "afterSha": null,
+    "details": {
+      "beforeCentres": [
+        "london-mill-hill"
+      ],
+      "afterCentres": [
+        "london-mill-hill",
+        "slough"
+      ]
+    }
   }
 ]
