@@ -254,3 +254,7 @@ textarea { padding:10px 12px; border:1px solid #ccc; border-radius:6px; min-widt
 .toasty-item.success { border-color:#c8e6c9; color:#2e7d32; }
 .toasty-item.warn { border-color:#ffe6b3; color:#b58105; }
 .toasty-item.error { border-color:#f5c2c7; color:#b02a37; }
+
+/* Navigation icons */
+.nav .nav-link .bi { font-size: 1rem; vertical-align: -2px; }
+.nav .nav-link.active .bi { filter: brightness(0) invert(1); }
