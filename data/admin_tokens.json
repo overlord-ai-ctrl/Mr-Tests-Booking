@@ -6,5 +6,12 @@
       "admins"
     ],
     "role": "master"
+  },
+  "1231": {
+    "name": "Nicola",
+    "pages": [
+      "centres"
+    ],
+    "role": "booker"
   }
 }
