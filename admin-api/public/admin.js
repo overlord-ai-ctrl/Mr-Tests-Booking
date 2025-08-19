@@ -271,52 +271,114 @@
   }
 
   // Utility: build a job card
-  function renderJobCard(j, actions=[]) {
-    const card = document.createElement('div'); card.className = 'job-card';
-    const title = document.createElement('div'); title.className = 'job-title';
+  function renderJobCard(j, actions=[], context='board') {
+    const card = document.createElement('div'); 
+    card.className = 'job-card';
+    
+    const title = document.createElement('div'); 
+    title.className = 'job-title';
     title.textContent = `${j.centre_name || j.centre_id || '—'} — ${j.candidate || ''}`;
-    const meta = document.createElement('div'); meta.className = 'job-meta';
+    
+    const meta = document.createElement('div'); 
+    meta.className = 'job-meta';
     const when = j.when ? `· ${j.when}` : '';
     meta.textContent = `ID:${j.id} ${when}`;
-    const right = document.createElement('div'); right.className = 'job-actions';
+    
+    const right = document.createElement('div'); 
+    right.className = 'job-actions';
     right.append(statusBadge(j.status));
     actions.forEach(a => right.appendChild(a));
     
-    // Add details section
-    const details = document.createElement('details');
-    details.className = 'job-details';
-    const summary = document.createElement('summary');
-    summary.textContent = 'Details';
-    details.appendChild(summary);
+    card.append(title, right, meta);
     
-    const dl = document.createElement('dl');
-    const fields = [
-      ['Student Name', j.candidate],
-      ['Phone', j.phone],
-      ['Licence Number', j.licence_number],
-      ['DVSA Ref', j.dvsa_ref],
-      ['Theory Expiry', j.theory_expiry],
-      ['Desired Centres', j.desired_centres],
-      ['Desired Range', j.desired_range],
-      ['Notes', j.notes]
-    ];
+    // Only show details for claimed jobs or in My Jobs view
+    const isClaimed = String(j.status||'').toLowerCase()==='claimed';
+    const isMineView = (context==='myjobs');
     
-    fields.forEach(([label, value]) => {
-      const dt = document.createElement('dt');
-      dt.textContent = label;
-      const dd = document.createElement('dd');
-      dd.textContent = value || '—';
-      dl.appendChild(dt);
-      dl.appendChild(dd);
-    });
+    if (isClaimed || isMineView) {
+      card.appendChild(renderJobDetailsSlim(j));
+    }
     
-    details.appendChild(dl);
-    card.append(title, right, meta, details);
+    // Wire claim/complete buttons to new functions
+    const claimBtn = card.querySelector('[data-action="claim"]') || 
+      Array.from(card.querySelectorAll('button')).find(b=>/claim/i.test(b.textContent||''));
+    if (claimBtn) {
+      claimBtn.onclick = ()=>claimJob(j.id);
+    }
+    
+    const completeBtn = card.querySelector('[data-action="complete"]') || 
+      Array.from(card.querySelectorAll('button')).find(b=>/complete/i.test(b.textContent||''));
+    if (completeBtn) {
+      completeBtn.onclick = ()=>completeJob(j.id);
+    }
+    
     return card;
   }
 
   // Small helper: success pulse on a button or card
   function pulse(el) { if (!el) return; el.classList.add('pulse-success'); setTimeout(()=>el.classList.remove('pulse-success'), 1000); }
+
+  // Busy overlay helpers
+  function showBusy(msg='Working…'){
+    const el = document.getElementById('screenBusy'); 
+    if (!el) return;
+    document.getElementById('screenBusyText').textContent = msg;
+    el.classList.remove('d-none');
+  }
+  
+  function hideBusy(){
+    const el = document.getElementById('screenBusy'); 
+    if (!el) return;
+    el.classList.add('d-none');
+  }
+
+  // Pretty range like "25 JAN – 15 FEB" (adds year if years differ)
+  function formatRangeNice(raw){
+    if (!raw) return '—';
+    // supports "YYYY-MM-DD to YYYY-MM-DD" or "YYYY-MM-DD - YYYY-MM-DD"
+    const parts = String(raw).split(/\s*(?:to|-|–|—)\s*/i).filter(Boolean);
+    if (parts.length < 2) return raw;
+    const a = new Date(parts[0]); 
+    const b = new Date(parts[1]);
+    if (isNaN(a) || isNaN(b)) return raw;
+    const dd = (d)=>String(d.getDate()).padStart(2,'0');
+    const MMM = (d)=>d.toLocaleString('en-GB',{month:'short'}).toUpperCase();
+    const y = (d)=>d.getFullYear();
+    const left = `${dd(a)} ${MMM(a)}`;
+    const right = `${dd(b)} ${MMM(b)}`;
+    if (y(a) !== y(b)) return `${left} ${y(a)} – ${right} ${y(b)}`;
+    // same year: omit year
+    return `${left} – ${right}`;
+  }
+
+  // Render details block with ONLY the requested fields
+  function renderJobDetailsSlim(j){
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    sum.textContent = 'Details';
+    det.append(sum);
+
+    const dl = document.createElement('dl');
+    dl.className = 'job-dl';
+
+    const add = (label, val)=>{
+      const dt = document.createElement('dt'); 
+      dt.textContent = label;
+      const dd = document.createElement('dd'); 
+      dd.textContent = val || '—';
+      dl.append(dt, dd);
+    };
+
+    add('Student Name', j.candidate);
+    add('Licence Number', j.licence_number);
+    add('DVSA Ref', j.dvsa_ref);
+    add('Notes', j.notes);
+    add('Desired Centres', j.desired_centres);
+    add('Desired Range', formatRangeNice(j.desired_range));
+
+    det.append(dl);
+    return det;
+  }
 
   // Show tiny skeletons while loading
   function renderSkeletonList(container, rows=3) {
@@ -327,6 +389,35 @@
       const s2=document.createElement('div'); s2.className='skel'; s2.style.width='25%';
       c.append(s1, document.createElement('div'), s2);
       container.appendChild(c);
+    }
+  }
+
+  // Claim and complete job functions with overlay
+  async function claimJob(jobId){
+    try{
+      showBusy('Claiming job…');
+      await api('/api/jobs/claim','POST',{ job_id: jobId });
+      hideBusy();
+      showToast?.('Claimed ✓','success');
+      loadJobs?.(); 
+      loadMyJobs?.();
+    }catch(e){
+      hideBusy();
+      alert('Failed to claim this job. Please try again.');
+    }
+  }
+
+  async function completeJob(jobId){
+    try{
+      showBusy('Completing job…');
+      await api('/api/jobs/complete','POST',{ job_id: jobId });
+      hideBusy();
+      showToast?.('Completed ✓','success');
+      loadMyJobs?.(); 
+      loadJobs?.();
+    }catch(e){
+      hideBusy();
+      alert('Failed to complete this job.');
     }
   }
 
@@ -387,7 +478,7 @@
           catch(e){ alert('Failed to delete'); }
         };
         const actions = (isMaster?.()) ? [claim, del] : [claim].filter(Boolean);
-        list.appendChild(renderJobCard?.(j, actions));
+        list.appendChild(renderJobCard?.(j, actions, 'board'));
       });
       status?.('jobsStatus','Loaded',true);
     } catch(e) {
@@ -430,10 +521,6 @@
         const actions=[];
         if (String(j.status).toLowerCase()==='claimed') {
           const complete = btn?.('Complete','success');
-          if (complete) complete.onclick = async () => {
-            try { await api('/api/jobs/complete','POST',{ job_id:j.id }); pulse?.(complete); loadMyJobs(); }
-            catch(e){ alert('Failed to complete'); }
-          };
           const release = btn?.('Release','secondary');
           if (release) release.onclick = async () => {
             if(!confirm('Release this job?')) return;
@@ -442,7 +529,7 @@
           };
           actions.push(complete, release);
         }
-        list.appendChild(renderJobCard?.(j, actions));
+        list.appendChild(renderJobCard?.(j, actions, 'myjobs'));
       });
       const per = data.payout_per_job || 70;
       const due = data.total_due || 0;

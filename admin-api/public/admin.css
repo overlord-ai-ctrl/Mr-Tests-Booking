@@ -402,3 +402,64 @@ body.dark .job-details dt {
 body.dark .job-details dd {
   color: #e7ecff;
 }
+
+/* Screen busy overlay */
+.screen-busy {
+  position: fixed; 
+  inset: 0; 
+  background: rgba(255,255,255,0.75);
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  z-index: 99999;
+}
+
+.screen-busy.d-none { 
+  display: none; 
+}
+
+.screen-busy-box {
+  background: #fff; 
+  border: 1px solid #e0e6ed; 
+  border-radius: 12px; 
+  padding: 18px 22px;
+  box-shadow: 0 10px 24px rgba(1,41,112,0.12); 
+  color: #012970; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center;
+}
+
+/* Job details styling */
+details summary { 
+  cursor: pointer; 
+  font-weight: 600; 
+  margin-top: 6px; 
+}
+
+.job-dl { 
+  display: grid; 
+  grid-template-columns: 180px 1fr; 
+  gap: 4px 12px; 
+  margin: 8px 0 0; 
+}
+
+.job-dl dt { 
+  color: #6b7280; 
+  font-weight: 600; 
+}
+
+.job-dl dd { 
+  margin: 0; 
+}
+
+/* Dark mode overlay */
+body.dark .screen-busy {
+  background: rgba(0,0,0,0.75);
+}
+
+body.dark .screen-busy-box {
+  background: #1a1a2e;
+  border-color: #2d3748;
+  color: #e2e8f0;
+}
