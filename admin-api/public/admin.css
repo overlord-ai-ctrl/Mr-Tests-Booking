@@ -463,3 +463,87 @@ body.dark .screen-busy-box {
   border-color: #2d3748;
   color: #e2e8f0;
 }
+
+/* Offer confirmation flow styles */
+.offer-grid { 
+  display: grid; 
+  grid-template-columns: 1fr 140px 120px; 
+  gap: 8px; 
+  align-items: center; 
+}
+
+.offer-actions { 
+  display: flex; 
+  gap: 8px; 
+  flex-wrap: wrap; 
+  margin-top: 8px; 
+}
+
+.pill-countdown { 
+  background: #eef2ff; 
+  color: #1d4ed8; 
+  border-radius: 999px; 
+  padding: 2px 8px; 
+  font-weight: 600; 
+  font-size: .85rem; 
+}
+
+.badge-status { 
+  font-weight: 600; 
+  border-radius: 999px; 
+  padding: 2px 8px; 
+}
+
+.badge-offered { 
+  background: #fff7ed; 
+  color: #c2410c; 
+  border: 1px solid #fed7aa; 
+}
+
+.badge-expired { 
+  background: #fef2f2; 
+  color: #b91c1c; 
+  border: 1px solid #fecaca; 
+}
+
+.badge-confirmed { 
+  background: #ecfdf5; 
+  color: #065f46; 
+  border: 1px solid #a7f3d0; 
+}
+
+.badge-declined { 
+  background: #fef2f2; 
+  color: #dc2626; 
+  border: 1px solid #fecaca; 
+}
+
+/* Dark mode offer styles */
+body.dark .pill-countdown {
+  background: #1e3a8a;
+  color: #93c5fd;
+}
+
+body.dark .badge-offered {
+  background: #451a03;
+  color: #fdba74;
+  border-color: #92400e;
+}
+
+body.dark .badge-expired {
+  background: #450a0a;
+  color: #fca5a5;
+  border-color: #991b1b;
+}
+
+body.dark .badge-confirmed {
+  background: #064e3b;
+  color: #6ee7b7;
+  border-color: #065f46;
+}
+
+body.dark .badge-declined {
+  background: #450a0a;
+  color: #fca5a5;
+  border-color: #991b1b;
+}

@@ -266,6 +266,10 @@
     span.className = 'badge';
     if (s === 'completed') { span.classList.add('badge-completed'); span.textContent = 'Completed'; }
     else if (s === 'claimed') { span.classList.add('badge-claimed'); span.textContent = 'Claimed'; }
+    else if (s === 'offered') { span.classList.add('badge-offered'); span.textContent = 'Offered'; }
+    else if (s === 'offered_expired') { span.classList.add('badge-expired'); span.textContent = 'Expired'; }
+    else if (s === 'confirmed_yes') { span.classList.add('badge-confirmed'); span.textContent = 'Confirmed'; }
+    else if (s === 'confirmed_no') { span.classList.add('badge-declined'); span.textContent = 'Declined'; }
     else { span.classList.add('badge-open'); span.textContent = 'Open'; }
     return span;
   }
@@ -291,10 +295,18 @@
     
     card.append(title, right, meta);
     
-    // Only show details for claimed jobs or in My Jobs view
-    const isClaimed = String(j.status||'').toLowerCase()==='claimed';
+    // Show offer panel for claimed/offered jobs
+    const status = String(j.status||'').toLowerCase();
+    const isClaimed = status === 'claimed';
+    const isOffered = status === 'offered' || status === 'offered_expired' || status === 'confirmed_yes' || status === 'confirmed_no';
     const isMineView = (context==='myjobs');
     
+    // Show offer panel for claimed/offered jobs in My Jobs view
+    if ((isClaimed || isOffered) && isMineView) {
+      card.appendChild(renderOfferPanel(j));
+    }
+    
+    // Show details for claimed jobs or in My Jobs view
     if (isClaimed || isMineView) {
       card.appendChild(renderJobDetailsSlim(j));
     }
@@ -351,6 +363,21 @@
     return `${left} – ${right}`;
   }
 
+  // Countdown timer for offer expiry
+  function prettyCountdown(iso){
+    const t = new Date(iso).getTime() - Date.now();
+    if (isNaN(t)) return '';
+    const s = Math.max(0, Math.floor(t/1000));
+    const m = Math.floor(s/60), r = s%60;
+    return `${m}m ${String(r).padStart(2,'0')}s left`;
+  }
+
+  // Check if offer is expired
+  function isOfferExpired(expiresAt) {
+    if (!expiresAt) return false;
+    return new Date(expiresAt).getTime() <= Date.now();
+  }
+
   // Render details block with ONLY the requested fields
   function renderJobDetailsSlim(j){
     const det = document.createElement('details');
@@ -378,6 +405,161 @@
 
     det.append(dl);
     return det;
+  }
+
+  // Render offer panel for claimed/offered jobs
+  function renderOfferPanel(j) {
+    const panel = document.createElement('div');
+    panel.className = 'mt-3 p-3 border rounded';
+    panel.style.borderColor = '#e0e6ed';
+    panel.style.backgroundColor = '#f8fafc';
+
+    const status = String(j.status || '').toLowerCase();
+    const isOffered = status === 'offered';
+    const isExpired = status === 'offered_expired' || (isOffered && isOfferExpired(j.offer_expires_at));
+    const isConfirmed = status === 'confirmed_yes';
+    const isDeclined = status === 'confirmed_no';
+
+    // Status badge and countdown
+    const statusRow = document.createElement('div');
+    statusRow.className = 'd-flex align-items-center gap-2 mb-2';
+    
+    let statusBadge;
+    if (isConfirmed) {
+      statusBadge = document.createElement('span');
+      statusBadge.className = 'badge badge-status badge-confirmed';
+      statusBadge.textContent = 'Client confirmed';
+    } else if (isDeclined) {
+      statusBadge = document.createElement('span');
+      statusBadge.className = 'badge badge-status badge-declined';
+      statusBadge.textContent = 'Declined';
+    } else if (isExpired) {
+      statusBadge = document.createElement('span');
+      statusBadge.className = 'badge badge-status badge-expired';
+      statusBadge.textContent = 'Offer expired';
+    } else if (isOffered) {
+      statusBadge = document.createElement('span');
+      statusBadge.className = 'badge badge-status badge-offered';
+      statusBadge.textContent = 'Offer sent';
+    }
+    
+    if (statusBadge) statusRow.appendChild(statusBadge);
+
+    // Countdown timer
+    if (isOffered && j.offer_expires_at) {
+      const countdown = document.createElement('span');
+      countdown.className = 'pill-countdown';
+      countdown.textContent = prettyCountdown(j.offer_expires_at);
+      statusRow.appendChild(countdown);
+      
+      // Update countdown every second
+      const updateCountdown = () => {
+        countdown.textContent = prettyCountdown(j.offer_expires_at);
+        if (isOfferExpired(j.offer_expires_at)) {
+          clearInterval(countdownInterval);
+          // Trigger a refresh to update status
+          setTimeout(() => { loadMyJobs?.(); loadJobs?.(); }, 1000);
+        }
+      };
+      const countdownInterval = setInterval(updateCountdown, 1000);
+      updateCountdown();
+    }
+
+    panel.appendChild(statusRow);
+
+    // Offer form (only for claimed jobs or expired offers)
+    if (status === 'claimed' || isExpired) {
+      const form = document.createElement('div');
+      form.className = 'offer-grid';
+      
+      // Centre select
+      const centreSelect = document.createElement('select');
+      centreSelect.className = 'form-control form-control-sm';
+      centreSelect.innerHTML = '<option value="">Select centre...</option>';
+      // Populate with centres from coverage
+      COVERAGE.forEach(centreId => {
+        const option = document.createElement('option');
+        option.value = centreId;
+        option.textContent = centreId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        centreSelect.appendChild(option);
+      });
+      
+      // Date input
+      const dateInput = document.createElement('input');
+      dateInput.type = 'date';
+      dateInput.className = 'form-control form-control-sm';
+      
+      // Time input
+      const timeInput = document.createElement('input');
+      timeInput.type = 'time';
+      timeInput.className = 'form-control form-control-sm';
+      
+      // Note textarea
+      const noteInput = document.createElement('textarea');
+      noteInput.className = 'form-control form-control-sm';
+      noteInput.placeholder = 'Note (optional)';
+      noteInput.rows = 2;
+      
+      form.append(centreSelect, dateInput, timeInput, noteInput);
+      panel.appendChild(form);
+      
+      // Action buttons
+      const actions = document.createElement('div');
+      actions.className = 'offer-actions';
+      
+      if (status === 'claimed') {
+        const sendBtn = btn('Send to Client', 'primary');
+        sendBtn.onclick = () => {
+          if (!centreSelect.value || !dateInput.value || !timeInput.value) {
+            alert('Please fill in centre, date, and time');
+            return;
+          }
+          sendOffer(j.id, centreSelect.value, dateInput.value, timeInput.value, noteInput.value);
+        };
+        actions.appendChild(sendBtn);
+      } else if (isExpired) {
+        const nudgeBtn = btn('Nudge', 'secondary');
+        nudgeBtn.onclick = () => nudgeOffer(j.id);
+        
+        const extendBtn = btn('Extend +15m', 'secondary');
+        extendBtn.onclick = () => extendOffer(j.id, 15);
+        
+        const releaseBtn = btn('Move to Next Client', 'outline-danger');
+        releaseBtn.onclick = () => {
+          if (confirm('Release this job to the next available booker?')) {
+            // Use existing release function
+            api('/api/jobs/release', 'POST', { job_id: j.id }).then(() => {
+              showToast?.('Released ✓', 'success');
+              loadMyJobs?.();
+              loadJobs?.();
+            }).catch(() => alert('Failed to release'));
+          }
+        };
+        
+        actions.append(nudgeBtn, extendBtn, releaseBtn);
+      }
+      
+      panel.appendChild(actions);
+    }
+
+    // Manual reply buttons for offered/expired jobs
+    if (isOffered || isExpired) {
+      const replyActions = document.createElement('div');
+      replyActions.className = 'offer-actions mt-2';
+      replyActions.style.borderTop = '1px solid #e0e6ed';
+      replyActions.style.paddingTop = '8px';
+      
+      const yesBtn = btn('Mark as YES', 'success');
+      yesBtn.onclick = () => markClientReply(j.id, 'YES');
+      
+      const noBtn = btn('Mark as NO', 'outline-danger');
+      noBtn.onclick = () => markClientReply(j.id, 'NO');
+      
+      replyActions.append(yesBtn, noBtn);
+      panel.appendChild(replyActions);
+    }
+
+    return panel;
   }
 
   // Show tiny skeletons while loading
@@ -418,6 +600,52 @@
     }catch(e){
       hideBusy();
       alert('Failed to complete this job.');
+    }
+  }
+
+  // Offer confirmation flow functions
+  async function sendOffer(jobId, centre, date, time, note) {
+    try {
+      showBusy('Sending to client…');
+      await api('/api/jobs/offer', 'POST', { job_id: jobId, centre, date, time, note });
+      hideBusy();
+      showToast?.('Offer sent ✓', 'success');
+      loadMyJobs?.();
+      loadJobs?.();
+    } catch(e) {
+      hideBusy();
+      alert('Failed to send offer. Please try again.');
+    }
+  }
+
+  async function nudgeOffer(jobId) {
+    try {
+      await api('/api/jobs/offer/nudge', 'POST', { job_id: jobId });
+      showToast?.('Nudge sent ✓', 'success');
+    } catch(e) {
+      alert('Failed to send nudge.');
+    }
+  }
+
+  async function extendOffer(jobId, minutes = 15) {
+    try {
+      await api('/api/jobs/offer/extend', 'POST', { job_id: jobId, minutes });
+      showToast?.(`Extended by ${minutes}m ✓`, 'success');
+      loadMyJobs?.();
+      loadJobs?.();
+    } catch(e) {
+      alert('Failed to extend offer.');
+    }
+  }
+
+  async function markClientReply(jobId, reply) {
+    try {
+      await api('/api/jobs/mark-client-reply', 'POST', { job_id: jobId, reply });
+      showToast?.(`Marked as ${reply} ✓`, 'success');
+      loadMyJobs?.();
+      loadJobs?.();
+    } catch(e) {
+      alert('Failed to mark reply.');
     }
   }
 
@@ -519,7 +747,9 @@
       }
       jobs.forEach(j=>{
         const actions=[];
-        if (String(j.status).toLowerCase()==='claimed') {
+        const status = String(j.status).toLowerCase();
+        
+        if (status === 'claimed') {
           const complete = btn?.('Complete','success');
           const release = btn?.('Release','secondary');
           if (release) release.onclick = async () => {
@@ -528,7 +758,21 @@
             catch(e){ alert('Failed to release'); }
           };
           actions.push(complete, release);
+        } else if (status === 'confirmed_yes') {
+          // Show Complete button for confirmed jobs
+          const complete = btn?.('Complete','success');
+          actions.push(complete);
+        } else if (status === 'confirmed_no') {
+          // Show Release button for declined jobs
+          const release = btn?.('Release','secondary');
+          if (release) release.onclick = async () => {
+            if(!confirm('Release this declined job?')) return;
+            try { await api('/api/jobs/release','POST',{ job_id:j.id }); loadMyJobs(); loadJobs(); }
+            catch(e){ alert('Failed to release'); }
+          };
+          actions.push(release);
         }
+        
         list.appendChild(renderJobCard?.(j, actions, 'myjobs'));
       });
       const per = data.payout_per_job || 70;

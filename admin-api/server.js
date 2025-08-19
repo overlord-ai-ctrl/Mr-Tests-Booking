@@ -883,6 +883,78 @@ app.post('/api/jobs/delete', auth, requirePage('admins'), async (req, res) => {
   } catch(e){ console.error(e); res.status(502).json({ error:'delete failed' }); }
 });
 
+// ---- Offer confirmation flow ----
+app.post('/api/jobs/offer', auth, async (req,res)=>{
+  const env = requireJobsEnv(res); if (!env) return;
+  try {
+    const token = (req.headers.authorization||'').replace(/^Bearer\s+/,'');
+    const { job_id, centre, date, time, note } = req.body || {};
+    if (!job_id || !centre || !date || !time) return res.status(400).json({ error:'centre, date, time required' });
+
+    const r = await jobsPost({
+      action:'propose_offer',
+      booking_id: job_id,
+      token,
+      offer: { centre, date, time, note: note||'' }
+    });
+
+    // optional WhatsApp automation if configured
+    try {
+      await fetch('/api/notify/whatsapp/send', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ booking_id: job_id, centre, when: `${date} ${time}` })
+      });
+    }catch(_){}
+
+    try { JobCache?.bust?.(); } catch(_){}
+    res.json({ ok:true });
+  } catch(e){ console.error(e); res.status(502).json({ error:'offer failed' }); }
+});
+
+app.post('/api/jobs/offer/nudge', auth, async (req,res)=>{
+  const env = requireJobsEnv(res); if (!env) return;
+  try {
+    const token = (req.headers.authorization||'').replace(/^Bearer\s+/,'');
+    const { job_id } = req.body || {};
+    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    // (Optional) send WA again
+    try {
+      await fetch('/api/notify/whatsapp/send', {
+        method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ booking_id: job_id })
+      });
+      await jobsPost({ action:'log_event', booking_id: job_id, actor: token, notes: 'whatsapp_nudge' });
+    }catch(_){}
+    res.json({ ok:true });
+  } catch(e){ res.status(502).json({ error:'nudge failed' }); }
+});
+
+app.post('/api/jobs/offer/extend', auth, async (req,res)=>{
+  const env = requireJobsEnv(res); if (!env) return;
+  try{
+    const token = (req.headers.authorization||'').replace(/^Bearer\s+/,'');
+    const { job_id, minutes } = req.body || {};
+    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    await jobsPost({ action:'extend_offer', booking_id: job_id, token, minutes: Number(minutes||15) });
+    try { JobCache?.bust?.(); } catch(_){}
+    res.json({ ok:true });
+  }catch(e){ res.status(502).json({ error:'extend failed' }); }
+});
+
+app.post('/api/jobs/mark-client-reply', auth, async (req,res)=>{
+  const env = requireJobsEnv(res); if (!env) return;
+  try{
+    const token = (req.headers.authorization||'').replace(/^Bearer\s+/,'');
+    const { job_id, reply } = req.body || {};
+    const r = String(reply||'').toUpperCase();
+    if (!job_id || !/^(YES|NO)$/.test(r)) return res.status(400).json({ error:'reply must be YES or NO' });
+    await jobsPost({ action:'record_client_reply', booking_id: job_id, token, reply: r });
+    try { JobCache?.bust?.(); } catch(_){}
+    res.json({ ok:true });
+  }catch(e){ res.status(502).json({ error:'mark reply failed' }); }
+});
+
 // ---- Stats (lifetime completed for current token) ----
 app.get('/api/jobs/stats', auth, async (req, res) => {
   const env = requireJobsEnv(res); if (!env) return res.json({ completed_all_time: 0 });
