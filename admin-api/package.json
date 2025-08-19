@@ -5,7 +5,12 @@
   "scripts": { 
     "start": "node server.js",
     "build": "echo 'No build step required'",
-    "deploy": "./deploy.sh"
+    "deploy": "../scripts/deploy.sh",
+    "validate": "../scripts/validate.sh",
+    "health": "../scripts/health.sh",
+    "dev": "node server.js",
+    "test": "echo 'No tests configured'",
+    "lint": "echo 'No linting configured'"
   },
   "dependencies": {
     "express": "^4.19.2",
