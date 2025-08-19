@@ -10,7 +10,8 @@
     "maxDaily": 10,
     "available": true,
     "centres": [
-      "london-mill-hill"
+      "london-mill-hill",
+      "slough"
     ]
   },
   "1231": {
