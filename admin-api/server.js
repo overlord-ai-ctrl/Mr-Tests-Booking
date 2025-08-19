@@ -298,6 +298,27 @@ async function jobsPost(payload) {
   return j;
 }
 
+// Legacy function for backward compatibility
+async function postJob(payload) {
+  return jobsPost(payload);
+}
+
+// Legacy audit function for backward compatibility
+async function auditJob({actor, action, job_id, extra}) {
+  try {
+    await audit({
+      actor,
+      action,
+      target: "jobs",
+      beforeSha: null,
+      afterSha: null,
+      details: { job_id, ...extra }
+    });
+  } catch (e) {
+    console.error("Job audit failed:", e);
+  }
+}
+
 // GitHub helpers
 const octokit = GITHUB_TOKEN ? new Octokit({ auth: GITHUB_TOKEN }) : null;
 
