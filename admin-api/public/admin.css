@@ -247,3 +247,10 @@ textarea { padding:10px 12px; border:1px solid #ccc; border-radius:6px; min-widt
   animation: shimmer 1.2s ease-in-out infinite;
 }
 @keyframes shimmer { 0%{background-position: 100% 0} 100%{background-position: 0 0} }
+
+/* Toast notifications */
+.toasty { position: fixed; right: 16px; bottom: 16px; z-index: 9999; display:flex; flex-direction:column; gap:8px; }
+.toasty-item { background:#fff; color:#012970; border:1px solid #e0e6ed; box-shadow:0 10px 24px rgba(1,41,112,0.12); border-radius:10px; padding:10px 12px; font-weight:600; }
+.toasty-item.success { border-color:#c8e6c9; color:#2e7d32; }
+.toasty-item.warn { border-color:#ffe6b3; color:#b58105; }
+.toasty-item.error { border-color:#f5c2c7; color:#b02a37; }

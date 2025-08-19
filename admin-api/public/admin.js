@@ -15,6 +15,41 @@
   };
   const slug = (s) => s.toLowerCase().replace(/&/g,"and").replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
 
+  // --- Toast helper ---
+  function showToast(msg, type='info', timeout=1200) {
+    const box = document.getElementById('toasty'); if (!box) return;
+    const el = document.createElement('div');
+    el.className = 'toasty-item' + (type==='success'?' success': type==='warn'?' warn': type==='error'?' error':'');
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(()=>{ el.remove(); }, timeout);
+  }
+
+  // --- Debounce utility ---
+  function debounce(fn, wait=300) {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); };
+  }
+
+  // Keep one AbortController per loader to cancel in-flight fetches
+  let _jobsAC = null;
+  let _myJobsAC = null;
+
+  // Wrap fetch with abort support
+  async function fetchWithAbort(url, options, controllerRefSetter) {
+    if (controllerRefSetter && typeof controllerRefSetter === 'function') {
+      // Cancel previous
+      controllerRefSetter('cancel');
+    }
+    const ac = new AbortController();
+    if (controllerRefSetter) controllerRefSetter(ac);
+    const res = await fetch(url, { ...(options||{}), signal: ac.signal });
+    return res;
+  }
+
+  // Controller setters
+  function setJobsAC(x){ if (x==='cancel' && _jobsAC) { try{_jobsAC.abort();}catch{} } else { _jobsAC = x; } }
+  function setMyJobsAC(x){ if (x==='cancel' && _myJobsAC) { try{_myJobsAC.abort();}catch{} } else { _myJobsAC = x; } }
+
   async function api(path, method="GET", body) {
     const headers = { "Content-Type": "application/json" };
     if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
@@ -169,84 +204,98 @@
   }
 
   // JOBS BOARD
-  async function loadJobs() {
+  const _doLoadJobs = async () => {
     const list = document.getElementById('jobsList');
     const q = (document.getElementById('jobsSearch')?.value || '').toLowerCase();
-    if (list) renderSkeletonList(list, 3);
-    status('jobsStatus','Loading…');
+    if (list) renderSkeletonList?.(list, 3);
+    status?.('jobsStatus','Loading…');
     try {
-      const res = await api('/api/jobs/board','GET');
-      const jobs = Array.isArray(res.jobs) ? res.jobs : [];
+      const headers = { "Content-Type": "application/json" };
+      if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
+      const res = await fetchWithAbort(`/api/jobs/board?q=${encodeURIComponent(q)}&limit=50&offset=0`, { method:'GET', headers }, setJobsAC);
+      const data = await res.json();
+      const jobs = Array.isArray(data.jobs) ? data.jobs : [];
       list.innerHTML = '';
-      const filtered = q ? jobs.filter(j => (j.centre_name||'').toLowerCase().includes(q) || (j.candidate||'').toLowerCase().includes(q)) : jobs;
-      if (!filtered.length) {
+      if (!jobs.length) {
         list.innerHTML = '<div class="placeholder">No open jobs.</div>';
-        status('jobsStatus','Loaded',true); return;
+        status?.('jobsStatus','Loaded',true);
+        return;
       }
-      filtered.forEach(j=>{
-        const claim = btn('Claim','success');
-        claim.onclick = async () => {
-          try { await api('/api/jobs/claim','POST',{ job_id:j.id }); pulse(claim); loadJobs(); loadMyJobs(); }
+      jobs.forEach(j=>{
+        const claim = btn?.('Claim','success');
+        if (claim) claim.onclick = async () => {
+          try { await api('/api/jobs/claim','POST',{ job_id:j.id }); pulse?.(claim); loadJobs(); loadMyJobs?.(); }
           catch(e){ alert('Failed to claim'); }
         };
-        const del = btn('Delete','outline-danger');
-        del.onclick = async () => {
-          if (!isMaster()) return;
+        const del = btn?.('Delete','outline-danger');
+        if (del) del.onclick = async () => {
+          if (!isMaster?.()) return;
           if (!confirm('Delete this job?')) return;
           try { await api('/api/jobs/delete','POST',{ job_id:j.id }); loadJobs(); }
           catch(e){ alert('Failed to delete'); }
         };
-        const actions = isMaster() ? [claim, del] : [claim];
-        list.appendChild(renderJobCard(j, actions));
+        const actions = (isMaster?.()) ? [claim, del] : [claim].filter(Boolean);
+        list.appendChild(renderJobCard?.(j, actions));
       });
-      status('jobsStatus','Loaded',true);
+      status?.('jobsStatus','Loaded',true);
     } catch(e) {
+      if (e.name === 'AbortError') return; // expected on new search
       console.error(e);
       list.innerHTML = '<div class="placeholder">Failed to load jobs.</div>';
-      status('jobsStatus','Failed');
+      status?.('jobsStatus','Failed');
     }
+  };
+
+  async function loadJobs() {
+    showToast('Refreshing jobs…');
+    await _doLoadJobs();
   }
 
   // MY JOBS
   async function loadMyJobs() {
+    showToast('Refreshing your jobs…');
     const list = document.getElementById('myJobsList');
-    if (list) renderSkeletonList(list, 2);
-    status('myJobsStatus','Loading…');
+    if (list) renderSkeletonList?.(list, 2);
+    status?.('myJobsStatus','Loading…');
     try {
-      const res = await api('/api/jobs/mine','GET');
-      const jobs = Array.isArray(res.jobs) ? res.jobs : [];
+      const headers = { "Content-Type": "application/json" };
+      if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
+      const res = await fetchWithAbort(`/api/jobs/mine?limit=50&offset=0`, { method:'GET', headers }, setMyJobsAC);
+      const data = await res.json();
+      const jobs = Array.isArray(data.jobs) ? data.jobs : [];
       list.innerHTML = '';
       if (!jobs.length) {
         list.innerHTML = '<div class="placeholder">You have no jobs.</div>';
         document.getElementById('earnings').textContent = '';
-        status('myJobsStatus','Loaded',true); return;
+        status?.('myJobsStatus','Loaded',true); return;
       }
       jobs.forEach(j=>{
         const actions=[];
         if (String(j.status).toLowerCase()==='claimed') {
-          const complete = btn('Complete','success');
-          complete.onclick = async () => {
-            try { await api('/api/jobs/complete','POST',{ job_id:j.id }); pulse(complete); loadMyJobs(); }
+          const complete = btn?.('Complete','success');
+          if (complete) complete.onclick = async () => {
+            try { await api('/api/jobs/complete','POST',{ job_id:j.id }); pulse?.(complete); loadMyJobs(); }
             catch(e){ alert('Failed to complete'); }
           };
-          const release = btn('Release','secondary');
-          release.onclick = async () => {
+          const release = btn?.('Release','secondary');
+          if (release) release.onclick = async () => {
             if(!confirm('Release this job?')) return;
             try { await api('/api/jobs/release','POST',{ job_id:j.id }); loadMyJobs(); loadJobs(); }
             catch(e){ alert('Failed to release'); }
           };
           actions.push(complete, release);
         }
-        list.appendChild(renderJobCard(j, actions));
+        list.appendChild(renderJobCard?.(j, actions));
       });
-      const per = res.payout_per_job || 70;
-      const due = res.total_due || 0;
+      const per = data.payout_per_job || 70;
+      const due = data.total_due || 0;
       document.getElementById('earnings').textContent = `£${due} due (£${per} per completed)`;
-      status('myJobsStatus','Loaded',true);
+      status?.('myJobsStatus','Loaded',true);
     } catch(e) {
+      if (e.name === 'AbortError') return;
       console.error(e);
       list.innerHTML = '<div class="placeholder">Failed to load your jobs.</div>';
-      status('myJobsStatus','Failed');
+      status?.('myJobsStatus','Failed');
     }
   }
 
@@ -581,7 +630,14 @@
     q("#toggleBin").onclick = toggleBin;
     
     // Jobs Board event handlers
-    document.getElementById('jobsSearch')?.addEventListener('input', ()=>loadJobs());
+    // Debounce the search input (300ms)
+    (() => {
+      const inp = document.getElementById('jobsSearch');
+      if (inp) {
+        const handler = debounce(() => loadJobs(), 300);
+        inp.addEventListener('input', handler);
+      }
+    })();
     
     // Autoload when switching tabs
     document.querySelectorAll('#nav a[data-nav="jobs"]')?.forEach(a => a.addEventListener('click', ()=>loadJobs()));
