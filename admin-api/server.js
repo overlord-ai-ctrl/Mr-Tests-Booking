@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Octokit } from "@octokit/rest";
 import compression from "compression";
+import { z } from "zod";
 
 const {
   GITHUB_TOKEN,
@@ -164,6 +165,112 @@ const KeepAlive = (() => {
   };
 })();
 
+// Zod validation schemas
+const claimSchema = z.object({ job_id: z.string().min(3) });
+const releaseSchema = z.object({ job_id: z.string().min(3) });
+const completeSchema = z.object({ job_id: z.string().min(3) });
+const offerSchema = z.object({ 
+  job_id: z.string().min(3), 
+  centre: z.string().min(2), 
+  date: z.string().min(8), 
+  time: z.string().min(4), 
+  note: z.string().optional() 
+});
+const extendSchema = z.object({ 
+  job_id: z.string().min(3), 
+  minutes: z.number().int().positive().max(240) 
+});
+const replySchema = z.object({ 
+  job_id: z.string().min(3), 
+  reply: z.enum(['YES','NO']) 
+});
+
+// Idempotency store
+const IdemStore = (() => {
+  const map = new Map();
+  const TTL_MS = 10 * 60 * 1000; // 10 minutes
+  
+  // Cleanup expired keys
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of map.entries()) {
+      if (now - entry.timestamp > TTL_MS) {
+        map.delete(key);
+      }
+    }
+  }, 60000); // Clean every minute
+  
+  return {
+    check(key) {
+      const entry = map.get(key);
+      if (!entry) return null;
+      if (Date.now() - entry.timestamp > TTL_MS) {
+        map.delete(key);
+        return null;
+      }
+      return entry.response;
+    },
+    store(key, response) {
+      map.set(key, { response, timestamp: Date.now() });
+    }
+  };
+})();
+
+// Enhanced rate limiter for all mutating actions
+const ActionRateLimiter = (() => {
+  const buckets = new Map();
+  const WINDOW_MS = 30 * 1000; // 30 seconds
+  const MAX_ACTIONS = 10; // 10 actions per window
+  
+  return {
+    checkLimit(token) {
+      const now = Date.now();
+      const bucket = buckets.get(token) || { actions: 0, resetTime: now + WINDOW_MS };
+      
+      // Reset bucket if window expired
+      if (now > bucket.resetTime) {
+        bucket.actions = 0;
+        bucket.resetTime = now + WINDOW_MS;
+      }
+      
+      // Check if limit exceeded
+      if (bucket.actions >= MAX_ACTIONS) {
+        const retryAfter = Math.ceil((bucket.resetTime - now) / 1000);
+        buckets.set(token, bucket);
+        return { allowed: false, retryAfter };
+      }
+      
+      // Allow action
+      bucket.actions++;
+      buckets.set(token, bucket);
+      return { allowed: true };
+    }
+  };
+})();
+
+// Unified error response helper
+function sendError(res, status, error, code, hint) {
+  const response = { error, code };
+  if (hint) response.hint = hint;
+  res.status(status).json(response);
+}
+
+// Global error handler
+function handleError(err, req, res, next) {
+  console.error(`Error ${req.method} ${req.path}:`, err.message);
+  
+  if (err.name === 'ZodError') {
+    return sendError(res, 400, 'validation_error', 'VALIDATION_FAILED', 
+      `Invalid fields: ${err.errors.map(e => e.path.join('.')).join(', ')}`);
+  }
+  
+  if (err.status) {
+    return res.status(err.status).json({ error: err.message, code: err.code || 'UNKNOWN' });
+  }
+  
+  sendError(res, 500, 'internal_error', 'INTERNAL_ERROR', 'Something went wrong');
+}
+
 const app = express();
 
 // Compression middleware
@@ -189,6 +296,30 @@ app.get("/admin", (_req, res) => {
   res.sendFile(path.join(publicDir, "admin.html"));
 });
 app.get("/", (_req, res) => res.redirect("/admin"));
+
+// Health check endpoints
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
+
+app.get("/health/deps", async (_req, res) => {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    
+    const response = await fetch(JOBS_API_BASE, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: JOBS_API_SECRET, action: 'ping', limit: 1 }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeout);
+    res.json({ apps_script: response.ok ? 'ok' : 'fail' });
+  } catch (error) {
+    res.json({ apps_script: 'fail' });
+  }
+});
 
 // GitHub helpers with sha support
 async function ghGetJson(path) {
@@ -816,46 +947,135 @@ app.get('/api/jobs/mine', auth, async (req, res) => {
 // ---- Claim / Release / Complete ----
 app.post('/api/jobs/claim', auth, async (req, res) => {
   const env = requireJobsEnv(res); if (!env) return;
+  
   try {
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
+    const idemKey = req.headers['x-idempotency-key'];
     
-    // Check rate limit
-    const rateLimit = RateLimiter.checkLimit(token);
-    if (!rateLimit.allowed) {
-      return res.status(429).json({ 
-        error: 'Rate limit exceeded', 
-        retry_after: rateLimit.retryAfter 
-      });
+    // Check idempotency
+    if (idemKey) {
+      const cached = IdemStore.check(idemKey);
+      if (cached) {
+        return res.status(409).json({ ok: true, replay: true });
+      }
     }
     
-    const { job_id } = req.body || {};
-    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    // Check rate limit
+    const rateLimit = ActionRateLimiter.checkLimit(token);
+    if (!rateLimit.allowed) {
+      return sendError(res, 429, 'rate_limited', 'RATE_LIMIT_EXCEEDED', 
+        `Try again in ${rateLimit.retryAfter} seconds`);
+    }
+    
+    // Validate input
+    const validation = claimSchema.safeParse(req.body);
+    if (!validation.success) {
+      return sendError(res, 400, 'validation_error', 'VALIDATION_FAILED', 
+        `Invalid fields: ${validation.error.errors.map(e => e.path.join('.')).join(', ')}`);
+    }
+    
+    const { job_id } = validation.data;
     const out = await jobsPost({ action:'claim', booking_id: job_id, token });
     bustJobsCacheFor(token);
+    
+    // Store idempotency response
+    if (idemKey) {
+      IdemStore.store(idemKey, out);
+    }
+    
     res.json(out);
-  } catch(e){ console.error(e); res.status(502).json({ error:'claim failed' }); }
+  } catch(e){ 
+    console.error('Claim error:', e); 
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Claim operation failed');
+  }
 });
 app.post('/api/jobs/release', auth, async (req, res) => {
   const env = requireJobsEnv(res); if (!env) return;
+  
   try {
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
-    const { job_id } = req.body || {};
-    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    const idemKey = req.headers['x-idempotency-key'];
+    
+    // Check idempotency
+    if (idemKey) {
+      const cached = IdemStore.check(idemKey);
+      if (cached) {
+        return res.status(409).json({ ok: true, replay: true });
+      }
+    }
+    
+    // Check rate limit
+    const rateLimit = ActionRateLimiter.checkLimit(token);
+    if (!rateLimit.allowed) {
+      return sendError(res, 429, 'rate_limited', 'RATE_LIMIT_EXCEEDED', 
+        `Try again in ${rateLimit.retryAfter} seconds`);
+    }
+    
+    // Validate input
+    const validation = releaseSchema.safeParse(req.body);
+    if (!validation.success) {
+      return sendError(res, 400, 'validation_error', 'VALIDATION_FAILED', 
+        `Invalid fields: ${validation.error.errors.map(e => e.path.join('.')).join(', ')}`);
+    }
+    
+    const { job_id } = validation.data;
     const out = await jobsPost({ action:'release', booking_id: job_id, token });
     bustJobsCacheFor(token);
+    
+    // Store idempotency response
+    if (idemKey) {
+      IdemStore.store(idemKey, out);
+    }
+    
     res.json(out);
-  } catch(e){ console.error(e); res.status(502).json({ error:'release failed' }); }
+  } catch(e){ 
+    console.error('Release error:', e); 
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Release operation failed');
+  }
 });
 app.post('/api/jobs/complete', auth, async (req, res) => {
   const env = requireJobsEnv(res); if (!env) return;
+  
   try {
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
-    const { job_id } = req.body || {};
-    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    const idemKey = req.headers['x-idempotency-key'];
+    
+    // Check idempotency
+    if (idemKey) {
+      const cached = IdemStore.check(idemKey);
+      if (cached) {
+        return res.status(409).json({ ok: true, replay: true });
+      }
+    }
+    
+    // Check rate limit
+    const rateLimit = ActionRateLimiter.checkLimit(token);
+    if (!rateLimit.allowed) {
+      return sendError(res, 429, 'rate_limited', 'RATE_LIMIT_EXCEEDED', 
+        `Try again in ${rateLimit.retryAfter} seconds`);
+    }
+    
+    // Validate input
+    const validation = completeSchema.safeParse(req.body);
+    if (!validation.success) {
+      return sendError(res, 400, 'validation_error', 'VALIDATION_FAILED', 
+        `Invalid fields: ${validation.error.errors.map(e => e.path.join('.')).join(', ')}`);
+    }
+    
+    const { job_id } = validation.data;
     const out = await jobsPost({ action:'complete', booking_id: job_id, token });
     bustJobsCacheFor(token);
+    
+    // Store idempotency response
+    if (idemKey) {
+      IdemStore.store(idemKey, out);
+    }
+    
     res.json(out);
-  } catch(e){ console.error(e); res.status(502).json({ error:'complete failed' }); }
+  } catch(e){ 
+    console.error('Complete error:', e); 
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Complete operation failed');
+  }
 });
 
 // ---- Optional admin-only: create/delete job entries ----
@@ -886,10 +1106,41 @@ app.post('/api/jobs/delete', auth, requirePage('admins'), async (req, res) => {
 // ---- Offer confirmation flow ----
 app.post('/api/jobs/offer', auth, async (req,res)=>{
   const env = requireJobsEnv(res); if (!env) return;
+  
   try {
     const token = (req.headers.authorization||'').replace(/^Bearer\s+/,'');
-    const { job_id, centre, date, time, note } = req.body || {};
-    if (!job_id || !centre || !date || !time) return res.status(400).json({ error:'centre, date, time required' });
+    const idemKey = req.headers['x-idempotency-key'];
+    
+    // Check idempotency
+    if (idemKey) {
+      const cached = IdemStore.check(idemKey);
+      if (cached) {
+        return res.status(409).json({ ok: true, replay: true });
+      }
+    }
+    
+    // Check rate limit
+    const rateLimit = ActionRateLimiter.checkLimit(token);
+    if (!rateLimit.allowed) {
+      return sendError(res, 429, 'rate_limited', 'RATE_LIMIT_EXCEEDED', 
+        `Try again in ${rateLimit.retryAfter} seconds`);
+    }
+    
+    // Validate input
+    const validation = offerSchema.safeParse(req.body);
+    if (!validation.success) {
+      return sendError(res, 400, 'validation_error', 'VALIDATION_FAILED', 
+        `Invalid fields: ${validation.error.errors.map(e => e.path.join('.')).join(', ')}`);
+    }
+    
+    const { job_id, centre, date, time, note } = validation.data;
+    
+    // Validate date/time is in the future
+    const offerDateTime = new Date(`${date} ${time}`);
+    if (isNaN(offerDateTime.getTime()) || offerDateTime <= new Date()) {
+      return sendError(res, 400, 'validation_error', 'INVALID_DATETIME', 
+        'Offer date and time must be in the future');
+    }
 
     const r = await jobsPost({
       action:'propose_offer',
@@ -908,8 +1159,17 @@ app.post('/api/jobs/offer', auth, async (req,res)=>{
     }catch(_){}
 
     try { JobCache?.bust?.(); } catch(_){}
+    
+    // Store idempotency response
+    if (idemKey) {
+      IdemStore.store(idemKey, { ok: true });
+    }
+    
     res.json({ ok:true });
-  } catch(e){ console.error(e); res.status(502).json({ error:'offer failed' }); }
+  } catch(e){ 
+    console.error('Offer error:', e); 
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Offer operation failed');
+  }
 });
 
 app.post('/api/jobs/offer/nudge', auth, async (req,res)=>{
@@ -932,27 +1192,92 @@ app.post('/api/jobs/offer/nudge', auth, async (req,res)=>{
 
 app.post('/api/jobs/offer/extend', auth, async (req,res)=>{
   const env = requireJobsEnv(res); if (!env) return;
+  
   try{
     const token = (req.headers.authorization||'').replace(/^Bearer\s+/,'');
-    const { job_id, minutes } = req.body || {};
-    if (!job_id) return res.status(400).json({ error:'job_id required' });
-    await jobsPost({ action:'extend_offer', booking_id: job_id, token, minutes: Number(minutes||15) });
+    const idemKey = req.headers['x-idempotency-key'];
+    
+    // Check idempotency
+    if (idemKey) {
+      const cached = IdemStore.check(idemKey);
+      if (cached) {
+        return res.status(409).json({ ok: true, replay: true });
+      }
+    }
+    
+    // Check rate limit
+    const rateLimit = ActionRateLimiter.checkLimit(token);
+    if (!rateLimit.allowed) {
+      return sendError(res, 429, 'rate_limited', 'RATE_LIMIT_EXCEEDED', 
+        `Try again in ${rateLimit.retryAfter} seconds`);
+    }
+    
+    // Validate input
+    const validation = extendSchema.safeParse(req.body);
+    if (!validation.success) {
+      return sendError(res, 400, 'validation_error', 'VALIDATION_FAILED', 
+        `Invalid fields: ${validation.error.errors.map(e => e.path.join('.')).join(', ')}`);
+    }
+    
+    const { job_id, minutes } = validation.data;
+    await jobsPost({ action:'extend_offer', booking_id: job_id, token, minutes });
     try { JobCache?.bust?.(); } catch(_){}
+    
+    // Store idempotency response
+    if (idemKey) {
+      IdemStore.store(idemKey, { ok: true });
+    }
+    
     res.json({ ok:true });
-  }catch(e){ res.status(502).json({ error:'extend failed' }); }
+  }catch(e){ 
+    console.error('Extend error:', e); 
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Extend operation failed');
+  }
 });
 
 app.post('/api/jobs/mark-client-reply', auth, async (req,res)=>{
   const env = requireJobsEnv(res); if (!env) return;
+  
   try{
     const token = (req.headers.authorization||'').replace(/^Bearer\s+/,'');
-    const { job_id, reply } = req.body || {};
-    const r = String(reply||'').toUpperCase();
-    if (!job_id || !/^(YES|NO)$/.test(r)) return res.status(400).json({ error:'reply must be YES or NO' });
-    await jobsPost({ action:'record_client_reply', booking_id: job_id, token, reply: r });
+    const idemKey = req.headers['x-idempotency-key'];
+    
+    // Check idempotency
+    if (idemKey) {
+      const cached = IdemStore.check(idemKey);
+      if (cached) {
+        return res.status(409).json({ ok: true, replay: true });
+      }
+    }
+    
+    // Check rate limit
+    const rateLimit = ActionRateLimiter.checkLimit(token);
+    if (!rateLimit.allowed) {
+      return sendError(res, 429, 'rate_limited', 'RATE_LIMIT_EXCEEDED', 
+        `Try again in ${rateLimit.retryAfter} seconds`);
+    }
+    
+    // Validate input
+    const validation = replySchema.safeParse(req.body);
+    if (!validation.success) {
+      return sendError(res, 400, 'validation_error', 'VALIDATION_FAILED', 
+        `Invalid fields: ${validation.error.errors.map(e => e.path.join('.')).join(', ')}`);
+    }
+    
+    const { job_id, reply } = validation.data;
+    await jobsPost({ action:'record_client_reply', booking_id: job_id, token, reply });
     try { JobCache?.bust?.(); } catch(_){}
+    
+    // Store idempotency response
+    if (idemKey) {
+      IdemStore.store(idemKey, { ok: true });
+    }
+    
     res.json({ ok:true });
-  }catch(e){ res.status(502).json({ error:'mark reply failed' }); }
+  }catch(e){ 
+    console.error('Mark reply error:', e); 
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Mark reply operation failed');
+  }
 });
 
 // ---- Stats (lifetime completed for current token) ----
@@ -985,6 +1310,9 @@ app.post('/api/public/booking-request', async (req, res) => {
     res.json({ ok:true, booking_id: data.booking_id });
   } catch(e){ console.error(e); res.status(500).json({ error:'Server error' }); }
 });
+
+// Global error handler (must be last)
+app.use(handleError);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
