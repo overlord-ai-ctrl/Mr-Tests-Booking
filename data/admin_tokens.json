@@ -21,6 +21,13 @@
     ],
     "role": "booker"
   },
+  "1234": {
+    "name": "Rayhanna",
+    "pages": [
+      "centres"
+    ],
+    "role": "booker"
+  },
   "2222": {
     "name": "Preston",
     "pages": [
