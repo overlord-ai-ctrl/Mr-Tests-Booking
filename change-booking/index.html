@@ -327,15 +327,44 @@
         return;
       }
 
-      // FRONT-END ONLY for now (no backend POST yet)
+      // Submit to API
       submitBtn.disabled = true;
       try {
-        form.style.display='none';
-        success.style.display='block';
-        // (Later: trigger confetti here if you want)
+        const API_BASE = 'https://mr-tests-booking-admin.onrender.com';
+        const booking = {
+          'Student Name': fullName,
+          'Phone': phone,
+          'Licence Number': lic,
+          'DVSA Reference': dvsa,
+          'Desired Centres': chosen.join(', '),
+          'Desired Range': `${$('#desiredDateStart').value} to ${$('#desiredDateEnd').value}`,
+          'Theory Expiry': $('#theoryExpire').value,
+          'Last Attempt': $('#lastAttempt').value || '',
+          'Notes': $('#customerComments').value?.trim() || '',
+          'Tier': $('input[name="tier"]:checked')?.value || 'Basic',
+          'Affiliate Code': $('#affiliateCode').value?.trim() || '',
+          'Partner ID': window.affCode || ''
+        };
+        
+        const r = await fetch(`${API_BASE}/api/public/booking-request`, {
+          method:'POST', 
+          headers:{'Content-Type':'application/json'}, 
+          body: JSON.stringify(booking)
+        });
+        const data = await r.json();
+        
+        if (!r.ok || !data.ok) { 
+          throw new Error(data.error || 'Could not submit booking.');
+        }
+        
+        // Redirect to thank you page
+        window.location.href = `/thank-you.html?ref=${encodeURIComponent(data.booking_id)}`;
+        
       } catch(e2){
         console.error(e2);
-        showTopError(['Something went wrong. Please try again.']);
+        showTopError([e2.message || 'Something went wrong. Please try again.']);
+        form.style.display='block';
+        success.style.display='none';
       } finally {
         submitBtn.disabled = false;
       }

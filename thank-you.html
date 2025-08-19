@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Booking Request Submitted - Driving Test Portal</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="logo">
+      <img src="assets/logo.svg" alt="Logo" />
+      <span>Driving Test Portal</span>
+    </div>
+    <div class="links">
+      <a class="btn secondary ripple" href="change-booking/">Book a Test</a>
+      <a class="btn secondary ripple" href="track/">Track</a>
+      <a class="btn secondary ripple" href="#faq">FAQ</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="card" style="text-align: center; max-width: 600px; margin: 2rem auto;">
+      <div style="font-size: 4rem; margin-bottom: 1rem;">✅</div>
+      <h1>Booking Request Submitted!</h1>
+      <p class="note">Thank you for your booking request. We'll start looking for available test slots right away.</p>
+      
+      <div class="card" style="background: #0b1018; border: 1px solid var(--edge); margin: 1.5rem 0;">
+        <h3>Your Reference</h3>
+        <p style="font-family: monospace; font-size: 1.2rem; color: #4ade80; margin: 0.5rem 0;" id="refId">Loading...</p>
+        <p style="font-size: 0.9rem; color: var(--muted); margin: 0;">Keep this reference for tracking your booking</p>
+      </div>
+
+      <div style="margin: 1.5rem 0;">
+        <h3>What happens next?</h3>
+        <div style="text-align: left; margin: 1rem 0;">
+          <p><strong>1.</strong> We'll search for available test slots at your preferred centres</p>
+          <p><strong>2.</strong> When we find a suitable slot, we'll contact you on your phone number</p>
+          <p><strong>3.</strong> You'll get a secure payment link to confirm the booking</p>
+          <p><strong>4.</strong> Once paid, we'll change your test to the new slot</p>
+        </div>
+      </div>
+
+      <div style="margin-top: 2rem;">
+        <a class="btn ripple" href="track/">Track my booking</a>
+        <a class="btn secondary ripple" href="change-booking/">Book another test</a>
+        <a class="btn secondary ripple" href="/">Back to home</a>
+      </div>
+    </div>
+
+    <div class="footer">© 2025 Driving Test Portal • WhatsApp: <a href="https://wa.me/447474302892">+44 7474 302 892</a></div>
+  </div>
+
+  <script>
+    // Extract reference from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const ref = urlParams.get('ref');
+    
+    if (ref) {
+      document.getElementById('refId').textContent = ref;
+    } else {
+      document.getElementById('refId').textContent = 'No reference provided';
+      document.getElementById('refId').style.color = '#f87171';
+    }
+  </script>
+</body>
+</html>

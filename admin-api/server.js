@@ -259,17 +259,43 @@ app.put("/api/admin-codes", auth, requirePage("admins"), async (req, res) => {
 });
 
 // Jobs API helpers
-async function fetchJobs(params = {}) {
-  if (!JOBS_API_BASE) {
-    throw new Error("JOBS_API_BASE not configured");
+function requireJobsEnv(res) {
+  const { JOBS_API_BASE, JOBS_API_SECRET } = process.env;
+  if (!JOBS_API_BASE || !JOBS_API_SECRET) {
+    res.status(500).json({
+      error: 'Jobs API not configured',
+      missing: {
+        JOBS_API_BASE: !process.env.JOBS_API_BASE,
+        JOBS_API_SECRET: !process.env.JOBS_API_SECRET
+      },
+      how_to_set: 'In Render -> admin-api -> Environment, add JOBS_API_BASE (Apps Script Web App URL) and JOBS_API_SECRET (same as Templates!secret).'
+    });
+    return null;
   }
-  const url = new URL("/api/jobs", JOBS_API_BASE);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
-  const res = await fetch(url, {
-    headers: { "Authorization": `Bearer ${JOBS_API_SECRET}` }
+  return { JOBS_API_BASE, JOBS_API_SECRET };
+}
+
+async function jobsGet(params={}) {
+  const { JOBS_API_BASE, JOBS_API_SECRET } = process.env;
+  const url = new URL(JOBS_API_BASE + '/jobs');
+  url.searchParams.set('secret', JOBS_API_SECRET);
+  for (const [k,v] of Object.entries(params)) if (v!==undefined && v!==null) url.searchParams.set(k, String(v));
+  const r = await fetch(url.toString(), { method: 'GET' });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error('Jobs GET failed');
+  return j;
+}
+
+async function jobsPost(payload) {
+  const { JOBS_API_BASE, JOBS_API_SECRET } = process.env;
+  const r = await fetch(JOBS_API_BASE, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ secret: JOBS_API_SECRET, ...payload })
   });
-  if (!res.ok) throw new Error(`Jobs API error: ${res.status}`);
-  return res.json();
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error('Jobs POST failed: '+JSON.stringify(j));
+  return j;
 }
 
 // GitHub helpers
@@ -545,186 +571,112 @@ app.put("/api/my-profile", auth, async (req, res) => {
   }
 });
 
-// Jobs Board and Dashboard endpoints
-app.get("/api/jobs/board", auth, async (req, res) => {
+// ---- Jobs board (open jobs filtered by booker coverage) ----
+app.get('/api/jobs/board', auth, async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return;
   try {
-    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
-    const map = await loadAdminMap();
-    const entry = map[token] || {};
-    const userCoverage = Array.isArray(entry.centres) ? entry.centres : [];
-    
-    // Masters see all jobs, bookers see only their coverage
-    const isMaster = req.adminInfo?.pages?.includes("*") || req.adminInfo?.pages?.includes("admins");
-    
-    if (isMaster) {
-      // Masters see all open jobs
-      const jobs = await fetchJobs({ status: 'open' });
-      res.json({ jobs: jobs.jobs || [] });
-    } else {
-      // Bookers see only jobs for their coverage
-      const allJobs = await fetchJobs({ status: 'open' });
-      const filteredJobs = (allJobs.jobs || []).filter(job => 
-        userCoverage.includes(job.centre_id)
-      );
-      res.json({ jobs: filteredJobs });
-    }
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to load jobs board" });
-  }
+    // If you store booker coverage in data/admin_tokens.json, you may already have req.adminInfo + token
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
+    // We can fetch all open jobs; coverage filtering can be done either here OR already filtered client-side.
+    const data = await jobsGet({ status:'open' });
+    // Optional: filter by coverage (if known)
+    // For now return as-is; UI can filter by centre if needed.
+    res.json({ jobs: Array.isArray(data.jobs)? data.jobs : [] });
+  } catch(e) { console.error(e); res.status(502).json({ error:'Failed to load jobs' }); }
 });
 
-app.get("/api/jobs/mine", auth, async (req, res) => {
+// ---- My jobs (assigned_to = token) ----
+app.get('/api/jobs/mine', auth, async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return;
   try {
-    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
-    const jobs = await fetchJobs({ assigned_to: token });
-    const userJobs = jobs.jobs || [];
-    
-    // Calculate earnings
-    const completedJobs = userJobs.filter(job => job.status === 'completed');
-    const totalDue = completedJobs.length * JOB_PAYOUT_GBP;
-    
-    res.json({ 
-      jobs: userJobs,
-      payout_per_job: JOB_PAYOUT_GBP,
-      total_due: totalDue
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to load my jobs" });
-  }
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
+    const data = await jobsGet({ assigned_to: token });
+    const payout = Number(process.env.JOB_PAYOUT_GBP || 70);
+    const completed = (data.jobs||[]).filter(j=>String(j.status).toLowerCase()==='completed').length;
+    res.json({ jobs: Array.isArray(data.jobs)? data.jobs : [], payout_per_job: payout, total_due: completed * payout });
+  } catch(e) { console.error(e); res.status(502).json({ error:'Failed to load my jobs' }); }
 });
 
-app.post("/api/jobs/claim", auth, async (req, res) => {
+// ---- Claim / Release / Complete ----
+app.post('/api/jobs/claim', auth, async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return;
   try {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
     const { job_id } = req.body || {};
-    if (!job_id) return res.status(400).json({ error: "job_id required" });
-    
-    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
-    await postJob({ action: "claim", job_id, token });
-    
-    await auditJob({
-      actor: req.adminInfo.name,
-      action: 'job.claim',
-      job_id,
-      extra: { token }
-    });
-    
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to claim job" });
-  }
+    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    const data = await jobsPost({ action:'claim', booking_id: job_id, token });
+    res.json(data);
+  } catch(e){ console.error(e); res.status(502).json({ error:'claim failed' }); }
 });
-
-app.post("/api/jobs/release", auth, async (req, res) => {
+app.post('/api/jobs/release', auth, async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return;
   try {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
     const { job_id } = req.body || {};
-    if (!job_id) return res.status(400).json({ error: "job_id required" });
-    
-    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
-    await postJob({ action: "release", job_id, token });
-    
-    await auditJob({
-      actor: req.adminInfo.name,
-      action: 'job.release',
-      job_id,
-      extra: { token }
-    });
-    
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to release job" });
-  }
+    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    const data = await jobsPost({ action:'release', booking_id: job_id, token });
+    res.json(data);
+  } catch(e){ console.error(e); res.status(502).json({ error:'release failed' }); }
 });
-
-app.post("/api/jobs/complete", auth, async (req, res) => {
+app.post('/api/jobs/complete', auth, async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return;
   try {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
     const { job_id } = req.body || {};
-    if (!job_id) return res.status(400).json({ error: "job_id required" });
-    
-    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
-    await postJob({ action: "complete", job_id, token });
-    
-    await auditJob({
-      actor: req.adminInfo.name,
-      action: 'job.complete',
-      job_id,
-      extra: { token }
-    });
-    
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to complete job" });
-  }
+    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    const data = await jobsPost({ action:'complete', booking_id: job_id, token });
+    res.json(data);
+  } catch(e){ console.error(e); res.status(502).json({ error:'complete failed' }); }
 });
 
-app.post("/api/jobs/create", auth, requirePage("admins"), async (req, res) => {
+// ---- Optional admin-only: create/delete job entries ----
+app.post('/api/jobs/create', auth, requirePage('admins'), async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return;
   try {
     const { job } = req.body || {};
-    if (!job || !job.centre_id || !job.centre_name) {
-      return res.status(400).json({ error: "job with centre_id and centre_name required" });
-    }
-    
-    const result = await postJob({ action: "create", job });
-    
-    await auditJob({
-      actor: req.adminInfo.name,
-      action: 'job.create',
-      job_id: result.job_id,
-      extra: { job }
-    });
-    
-    res.json({ ok: true, job_id: result.job_id });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to create job" });
-  }
+    if (!job || !job.centre_id || !job.centre_name) return res.status(400).json({ error:'centre_id and centre_name required' });
+    const data = await jobsPost({ action:'create_booking', booking: {
+      'Booking ID': job.id, 'Matched Centre': job.centre_id, 'Student Name': job.candidate || '', 'Notes': job.notes || '', 'Tier': job.tier || '', 'Partner ID': job.partner_id || ''
+    }});
+    res.json({ ok:true, job_id: data.booking_id });
+  } catch(e){ console.error(e); res.status(502).json({ error:'create failed' }); }
 });
-
-app.post("/api/jobs/delete", auth, requirePage("admins"), async (req, res) => {
+app.post('/api/jobs/delete', auth, requirePage('admins'), async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return;
   try {
     const { job_id } = req.body || {};
-    if (!job_id) return res.status(400).json({ error: "job_id required" });
-    
-    await postJob({ action: "delete", job_id });
-    
-    await auditJob({
-      actor: req.adminInfo.name,
-      action: 'job.delete',
-      job_id,
-      extra: {}
-    });
-    
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to delete job" });
-  }
+    if (!job_id) return res.status(400).json({ error:'job_id required' });
+    const actor = (req.adminInfo?.name || 'admin');
+    const data = await jobsPost({ action:'delete_soft', booking_id: job_id, actor });
+    res.json(data);
+  } catch(e){ console.error(e); res.status(502).json({ error:'delete failed' }); }
 });
 
-// Jobs stats proxy (graceful if Jobs API missing)
-app.get("/api/jobs/stats", auth, async (req, res) => {
+// ---- Stats (lifetime completed for current token) ----
+app.get('/api/jobs/stats', auth, async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return res.json({ completed_all_time: 0 });
+  try{
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
+    const data = await jobsGet({ status:'completed', assigned_to: token });
+    res.json({ completed_all_time: Array.isArray(data.jobs)? data.jobs.length : 0 });
+  } catch(e){ console.error(e); res.json({ completed_all_time: 0 }); }
+});
+
+// ---- Public intake for the static booking form ----
+app.post('/api/public/booking-request', async (req, res) => {
+  const env = requireJobsEnv(res); if (!env) return;
   try {
-    if (!JOBS_API_BASE || !JOBS_API_SECRET) {
-      return res.json({ completed_all_time: 0 });
-    }
-    const token = (req.headers.authorization || "").replace(/^Bearer\s+/, "");
-    const url = new URL(JOBS_API_BASE + "/jobs");
-    url.searchParams.set("status", "completed");
-    url.searchParams.set("assigned_to", token);
-    url.searchParams.set("secret", JOBS_API_SECRET);
-    const r = await fetch(url.toString(), { method: "GET" });
-    if (!r.ok) return res.json({ completed_all_time: 0 });
-    const data = await r.json().catch(() => ({}));
-    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
-    return res.json({ completed_all_time: jobs.length });
-  } catch (e) {
-    console.error("jobs/stats error", e);
-    return res.json({ completed_all_time: 0 });
-  }
+    const ip =
+      (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() ||
+      req.socket.remoteAddress || '';
+    const booking = req.body || {};
+    const required = ['Student Name','Phone'];
+    const missing = required.filter(k => !String(booking[k] || '').trim());
+    if (missing.length) return res.status(400).json({ error:'Missing fields', missing });
+    const data = await jobsPost({ action:'create_booking', booking, ip });
+    if (!data.ok) return res.status(502).json({ error:'Failed to create booking', detail:data });
+    res.json({ ok:true, booking_id: data.booking_id });
+  } catch(e){ console.error(e); res.status(500).json({ error:'Server error' }); }
 });
 
 const PORT = process.env.PORT || 3000;
