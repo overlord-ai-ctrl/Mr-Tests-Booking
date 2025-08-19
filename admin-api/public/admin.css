@@ -85,6 +85,61 @@ input[type="text"], input[type="password"], input[type="number"], textarea {
   animation: successPulse 900ms ease-out 1;
 }
 
+/* Compact icon buttons */
+.icon-btn {
+  background: transparent;
+  border: 0;
+  padding: 4px 6px;
+  line-height: 1;
+  border-radius: 6px;
+}
+.icon-btn:hover {
+  background: rgba(1,41,112,0.06);
+}
+
+/* Centre rows: name left, badges inline, small actions right */
+.row.inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #eef1f6;
+}
+
+/* Coverage checkbox on right side */
+.coverage-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; border-bottom: 1px dashed #eef1f6;
+}
+.coverage-name { flex: 1; color: #012970; }
+.coverage-right { display: flex; align-items: center; gap: 8px; }
+
+/* Availability pill */
+.av-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 999px; font-weight: 700;
+}
+.av-on  { background: #e9f8ee; color: #1e7e34; border: 1px solid #badbcc; }
+.av-off { background: #fdecec; color: #b02a37; border: 1px solid #f5c2c7; }
+
+/* Clean list for profile centres */
+.clean-list { list-style: none; padding-left: 0; margin: 6px 0; }
+.clean-list li { padding: 4px 0; border-bottom: 1px solid #eef1f6; }
+
+/* Badges tidy */
+.badge { border-radius: 999px; font-weight: 600; }
+
+/* Remove grey loading overlays; keep text-only */
+.placeholder { color: #6c757d; background: none !important; }
+
+/* Small delete/restore styles */
+.btn-outline-danger.btn-sm, .btn-outline-secondary.btn-sm { padding: 4px 8px; border-radius: 6px; }
+
+/* Tighten admin codes rows */
+.code-row { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom: 1px solid #eef1f6; }
+.code-row .spacer { flex: 1; }
+
 /* Legacy styles for compatibility */
 :root { --gap: 10px; }
 * { box-sizing: border-box; }
