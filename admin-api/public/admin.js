@@ -7,6 +7,14 @@
   let currentBinSha = null;
   let binLoaded = false;
   let COVERAGE = new Set(); // Coverage centre IDs for filtering
+  
+  // Helper to normalize centre IDs (same as server)
+  function normCentreId(s) {
+    return String(s || '').toLowerCase().trim()
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
 
   const status = (id, txt, ok=false) => {
     const el = q("#" + id);
@@ -349,8 +357,11 @@
       // Client-side coverage filtering (belt-and-braces)
       const filteredJobs = jobs.filter(job => {
         if (COVERAGE.size === 0) return false; // No coverage = no jobs
-        const jobCentreId = job.centre_id || job.matched_centre;
-        return COVERAGE.has(jobCentreId);
+        // Prefer explicit centre_id; else centre_name; else first desired
+        const cidRaw = job.centre_id || job.centre_name || 
+          (job.desired_centres ? String(job.desired_centres).split(',')[0] : '');
+        const cid = normCentreId(cidRaw);
+        return COVERAGE.has(cid);
       });
       
       if (!filteredJobs.length) {
@@ -671,7 +682,7 @@
       
       // Update global coverage Set for filtering
       COVERAGE.clear();
-      ids.forEach(id => COVERAGE.add(id));
+      ids.forEach(id => COVERAGE.add(normCentreId(id)));
       
       const res = await api('/api/test-centres','GET');
       const centres = res?.centres || [];

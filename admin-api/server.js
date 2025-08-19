@@ -56,6 +56,14 @@ function parsePage(req){
   return { limit, offset };
 }
 
+// Helper to normalize centre IDs
+function normCentreId(s) {
+  return String(s || '').toLowerCase().trim()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 // Helper to get coverage for a token
 async function getCoverageForToken(token) {
   try {
@@ -63,7 +71,7 @@ async function getCoverageForToken(token) {
     try {
       const { json } = await ghGetJson(`data/admin_coverage/${token}.json`);
       if (json && Array.isArray(json.centres)) {
-        return json.centres;
+        return json.centres.map(normCentreId).filter(Boolean);
       }
     } catch (e) {
       if (e.status !== 404) console.warn('Coverage file read error:', e.message);
@@ -74,7 +82,7 @@ async function getCoverageForToken(token) {
       const { json } = await ghGetJson("data/admin_tokens.json");
       const tokenData = json[token];
       if (tokenData && Array.isArray(tokenData.coverage)) {
-        return tokenData.coverage;
+        return tokenData.coverage.map(normCentreId).filter(Boolean);
       }
     } catch (e) {
       if (e.status !== 404) console.warn('Admin tokens read error:', e.message);
@@ -769,11 +777,15 @@ app.get('/api/jobs/board', auth, async (req, res) => {
       jobsGet({ status:'open', assigned_to:'', q, limit, offset })
     );
     
-    // Filter jobs by coverage
+    // Filter jobs by coverage with fallback logic
     const allJobs = Array.isArray(data.jobs) ? data.jobs : [];
+    const coverageSet = new Set(coverage);
     const filteredJobs = allJobs.filter(job => {
-      const jobCentreId = job.centre_id || job.matched_centre;
-      return coverage.includes(jobCentreId);
+      // Prefer explicit centre_id; else centre_name; else first desired
+      const cidRaw = job.centre_id || job.centre_name || 
+        (job.desired_centres ? String(job.desired_centres).split(',')[0] : '');
+      const cid = normCentreId(cidRaw);
+      return coverageSet.has(cid);
     });
     
     res.json({ jobs: filteredJobs });
@@ -888,6 +900,10 @@ app.post('/api/public/booking-request', async (req, res) => {
     if (missing.length) return res.status(400).json({ error:'Missing fields', missing });
     const data = await jobsPost({ action:'create_booking', booking, ip });
     if (!data.ok) return res.status(502).json({ error:'Failed to create booking', detail:data });
+    
+    // Bust jobs cache so new booking appears immediately
+    try { JobCache?.bust?.(); } catch(_) {}
+    
     res.json({ ok:true, booking_id: data.booking_id });
   } catch(e){ console.error(e); res.status(500).json({ error:'Server error' }); }
 });
