@@ -705,5 +705,27 @@ app.post("/api/jobs/delete", auth, requirePage("admins"), async (req, res) => {
   }
 });
 
+// Jobs stats proxy (graceful if Jobs API missing)
+app.get("/api/jobs/stats", auth, async (req, res) => {
+  try {
+    if (!JOBS_API_BASE || !JOBS_API_SECRET) {
+      return res.json({ completed_all_time: 0 });
+    }
+    const token = (req.headers.authorization || "").replace(/^Bearer\s+/, "");
+    const url = new URL(JOBS_API_BASE + "/jobs");
+    url.searchParams.set("status", "completed");
+    url.searchParams.set("assigned_to", token);
+    url.searchParams.set("secret", JOBS_API_SECRET);
+    const r = await fetch(url.toString(), { method: "GET" });
+    if (!r.ok) return res.json({ completed_all_time: 0 });
+    const data = await r.json().catch(() => ({}));
+    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+    return res.json({ completed_all_time: jobs.length });
+  } catch (e) {
+    console.error("jobs/stats error", e);
+    return res.json({ completed_all_time: 0 });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`[admin-api] listening on ${PORT}`));

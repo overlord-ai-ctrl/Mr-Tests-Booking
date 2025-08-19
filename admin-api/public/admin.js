@@ -5,6 +5,7 @@
   let ME = null;
   let currentCentresSha = null;
   let currentBinSha = null;
+  let binLoaded = false;
 
   const status = (id, txt, ok=false) => {
     const el = q("#" + id);
@@ -80,15 +81,14 @@
       showNav();
       status("authStatus", "Unlocked ✓", true);
       
-      // Auto-open Jobs tab and load both lists
-      setTimeout(() => {
-        const jobsTab = document.querySelector('a[data-nav="jobs"]');
-        if (jobsTab) {
-          jobsTab.click();
-          loadJobs();
-          loadMyJobs();
-        }
-      }, 100);
+      // Autoload everything permitted
+      loadCentres();
+      if (isMaster()) loadBin();
+      loadProfile();
+      loadProfileStats();
+      if (typeof loadCodes === 'function' && isMaster()) loadCodes();
+      if (typeof loadJobs === 'function') loadJobs();
+      if (typeof loadMyJobs === 'function') loadMyJobs();
     } catch (e) {
       console.error(e);
       status("authStatus", "Invalid code");
@@ -97,51 +97,14 @@
     }
   }
 
-  // Search and filter functionality
-  function filterCentres() {
-    const searchTerm = q("#search").value.toLowerCase();
-    const rows = q("#centresBox").querySelectorAll(".row");
-    
-    rows.forEach(row => {
-      const name = row.querySelector("div")?.textContent?.toLowerCase() || "";
-      const id = row.querySelector(".badge")?.textContent?.toLowerCase() || "";
-      const matches = name.includes(searchTerm) || id.includes(searchTerm);
-      row.classList.toggle("hidden", !matches);
-    });
-  }
-
-  function selectAllVisible() {
-    const visibleRows = q("#centresBox").querySelectorAll(".row:not(.hidden)");
-    visibleRows.forEach(row => {
-      const checkbox = row.querySelector('input[type="checkbox"]');
-      if (checkbox) checkbox.checked = true;
-    });
-  }
-
-  function selectNone() {
-    const checkboxes = q("#centresBox").querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(checkbox => checkbox.checked = false);
-  }
-
-  function exportCsv() {
-    const rows = q("#centresBox").querySelectorAll(".row");
-    let csv = "id,name,selected\n";
-    
-    rows.forEach(row => {
-      const id = row.querySelector(".badge")?.textContent || "";
-      const name = row.querySelector("div")?.textContent || "";
-      const checkbox = row.querySelector('input[type="checkbox"]');
-      const selected = checkbox?.checked ? "true" : "false";
-      csv += `"${id}","${name}",${selected}\n`;
-    });
-    
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "centres-coverage.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  // Toggle bin panel
+  function toggleBin() {
+    const panel = q('#binPanel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden') && !binLoaded && isMaster()) {
+      loadBin();
+      binLoaded = true;
+    }
   }
 
   // Job row renderer
@@ -322,10 +285,10 @@
   }
 
   async function appendCentre() {
-    const nameEl = q("#newName"), idEl = q("#newId");
-    const name = (nameEl.value||"").trim(); let id = (idEl.value||"").trim();
+    const nameEl = q("#newName");
+    const name = (nameEl.value||"").trim();
     if (!name) return status("appendStatus","Name required");
-    if (!id) id = slug(name);
+    const id = slug(name);
     status("appendStatus","Saving…");
     try {
       await api("/api/test-centres","PUT",{ mode:"append", centres:[{ id, name }] });
@@ -344,7 +307,8 @@
       }
       
       q("#centresBox").appendChild(row);
-      nameEl.value=""; idEl.value=""; status("appendStatus","Appended & committed ✓", true);
+      nameEl.value=""; status("appendStatus","Appended & committed ✓", true);
+      loadCentres(); // reload to reflect
     } catch (e) { console.error(e); status("appendStatus","Failed to append"); }
   }
 
@@ -393,15 +357,29 @@
   }
 
   // Profile functionality
-  async function loadMyProfile() {
+  async function loadProfile() {
     try {
       const profile = await api('/api/my-profile','GET');
       q("#profileNotes").value = profile.notes || "";
       q("#profileMaxDaily").value = profile.maxDaily || 0;
       q("#profileAvailable").checked = profile.available !== false;
+      
+      // Set header info
+      q("#profileName").textContent = ME?.name || "—";
+      q("#profileRole").textContent = ME?.role || (isMaster() ? 'master' : 'booker');
     } catch (e) {
       console.error(e);
       status("profileStatus", "Failed to load profile");
+    }
+  }
+
+  async function loadProfileStats() {
+    try {
+      const stats = await api('/api/jobs/stats','GET');
+      q("#profileLifetime").textContent = stats.completed_all_time || 0;
+    } catch (e) {
+      console.error(e);
+      q("#profileLifetime").textContent = "0";
     }
   }
 
@@ -468,16 +446,14 @@
     const code = document.getElementById("newCode").value.trim();
     const name = document.getElementById("newAdminName").value.trim();
     const role = document.getElementById("newRole").value;
-    const pages = document.getElementById("newPages").value.split(",").map(s=>s.trim()).filter(Boolean);
     if (!code) return status("addCodeStatus","Code required");
     if (!name) return status("addCodeStatus","Name required");
     status("addCodeStatus","Saving…");
     try {
-      await api("/api/admin-codes","PUT",{ mode:"append", code, name, pages, role });
+      await api("/api/admin-codes","PUT",{ mode:"append", code, name, role });
       status("addCodeStatus","Added ✓",true);
       document.getElementById("newCode").value = "";
       document.getElementById("newAdminName").value = "";
-      document.getElementById("newPages").value = "";
       document.getElementById("newRole").value = "booker";
       loadCodes();
     } catch (e) { console.error(e); status("addCodeStatus","Failed to add"); }
@@ -487,22 +463,15 @@
     const saved = sessionStorage.getItem("mrtests_admin_token");
     if (saved) { q("#token").value = saved; }
     q("#unlock").onclick = unlock;
-    q("#load").onclick = loadCentres;
     q("#append").onclick = appendCentre;
-    q("#loadBin").onclick = loadBin;
     q("#saveProfile").onclick = saveMyProfile;
-    document.getElementById("loadCodes").onclick = loadCodes;
     document.getElementById("addCode").onclick = addCode;
     document.getElementById('saveCoverage').onclick = saveCoverage;
     
-    // New event listeners
-    q("#search").oninput = filterCentres;
-    q("#selectAll").onclick = selectAllVisible;
-    q("#selectNone").onclick = selectNone;
-    q("#exportCsv").onclick = exportCsv;
+    // Toggle bin
+    q("#toggleBin").onclick = toggleBin;
     
     // Jobs Board event handlers
-    document.getElementById('loadJobs').onclick = loadJobs;
     document.getElementById('jobsSearch').oninput = loadJobs;
     document.getElementById('createJob').onclick = async ()=>{
       const payload = {
@@ -526,14 +495,6 @@
       } catch(e){ status('createJobStatus','Failed'); }
     };
     
-    // My Jobs event handlers
-    document.getElementById('loadMyJobs').onclick = loadMyJobs;
-    
     if (saved) unlock();
-    
-    // Load profile when profile tab is shown
-    document.querySelector('a[data-nav="profile"]')?.addEventListener('click', () => {
-      setTimeout(loadMyProfile, 100);
-    });
   });
 })();

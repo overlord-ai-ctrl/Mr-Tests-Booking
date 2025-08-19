@@ -31,7 +31,6 @@
   <main id="app" hidden>
     <nav id="nav" class="nav" hidden>
       <a href="#" data-nav="centres">Centres</a>
-      <a href="#" data-nav="bin">Recycle Bin</a>
       <a href="#" data-nav="profile">Profile</a>
       <a href="#" data-nav="admins">Admin Codes</a>
       <a href="#" data-nav="jobs">Jobs Board</a>
@@ -40,22 +39,23 @@
 
     <section class="panel" data-page="centres">
       <h2>Preferred Test Centres</h2>
-      <div class="row">
-        <button id="load">Load centres</button>
-        <input id="search" type="text" placeholder="Search centres..." class="search-input"/>
-        <button id="selectAll">Select all</button>
-        <button id="selectNone">Select none</button>
-        <button id="exportCsv">Export CSV</button>
-        <span class="spacer"></span>
+      <div class="toolbar">
+        <button id="toggleBin" class="btn-link">Recycle Bin</button>
         <span id="status" class="muted"></span>
       </div>
       <div id="centresBox" class="list">
         <div class="placeholder">Centres will appear here…</div>
       </div>
+      
+      <div id="binPanel" class="hidden">
+        <div id="binBox" class="list">
+          <div class="placeholder">Deleted centres will appear here…</div>
+        </div>
+      </div>
+      
       <h3>Add a new centre</h3>
       <div class="row">
         <input id="newName" type="text" placeholder="Name e.g. London - Wood Green"/>
-        <input id="newId" type="text" placeholder="Optional ID (auto if blank)"/>
         <button id="append">Append</button>
         <span id="appendStatus" class="muted"></span>
       </div>
@@ -68,47 +68,35 @@
       </div>
     </section>
 
-    <section class="panel" data-page="bin" hidden>
-      <h2>Recycle Bin</h2>
-      <div class="row">
-        <button id="loadBin">Load deleted centres</button>
-        <span id="binStatus" class="muted"></span>
-      </div>
-      <div id="binBox" class="list">
-        <div class="placeholder">Deleted centres will appear here…</div>
-      </div>
-    </section>
-
     <section class="panel" data-page="profile" hidden>
-      <h2>My Profile</h2>
-      <div class="profile-form">
-        <div class="form-group">
-          <label for="profileNotes">Notes</label>
-          <textarea id="profileNotes" placeholder="Personal notes..."></textarea>
+      <div class="profile-header">
+        <div>
+          <div class="profile-name" id="profileName">—</div>
+          <div class="profile-sub">
+            <span class="badge" id="profileRole">—</span>
+            <label class="switch">
+              <input type="checkbox" id="profileAvailable">
+              <span>Available</span>
+            </label>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="profileMaxDaily">Max daily bookings</label>
-          <input id="profileMaxDaily" type="number" min="0" placeholder="0"/>
+        <div class="profile-stats">
+          <div class="stat">
+            <div class="stat-num" id="profileLifetime">0</div>
+            <div class="stat-label">Lifetime jobs</div>
+          </div>
         </div>
-        <div class="form-group">
-          <label>
-            <input id="profileAvailable" type="checkbox" checked/>
-            Available for bookings
-          </label>
-        </div>
-        <div class="row">
-          <button id="saveProfile">Save profile</button>
-          <span id="profileStatus" class="muted"></span>
-        </div>
+      </div>
+      <div class="row">
+        <textarea id="profileNotes" placeholder="Notes…" rows="3"></textarea>
+        <input id="profileMaxDaily" type="number" min="0" placeholder="Max per day">
+        <button id="saveProfile">Save profile</button>
+        <span id="profileStatus" class="muted"></span>
       </div>
     </section>
 
     <section class="panel" data-page="admins" hidden>
       <h2>Admin Codes</h2>
-      <div class="row">
-        <button id="loadCodes">Load codes</button>
-        <span id="codesStatus" class="muted"></span>
-      </div>
       <div id="codesList" class="list"><div class="placeholder">Codes will appear here…</div></div>
 
       <h3>Add a new admin</h3>
@@ -119,7 +107,6 @@
           <option value="booker">Booker</option>
           <option value="master">Master admin</option>
         </select>
-        <input id="newPages" type="text" placeholder='Pages (comma separated, e.g. centres,affiliates)'/>
         <button id="addCode">Add code</button>
         <span id="addCodeStatus" class="muted"></span>
       </div>
@@ -128,7 +115,6 @@
     <section class="panel" data-page="jobs" hidden>
       <h2>Jobs Board</h2>
       <div class="row">
-        <button id="loadJobs">Load jobs</button>
         <input id="jobsSearch" type="text" placeholder="Search centre or candidate">
         <span id="jobsStatus" class="muted"></span>
       </div>
@@ -151,10 +137,6 @@
 
     <section class="panel" data-page="myjobs" hidden>
       <h2>My Jobs</h2>
-      <div class="row">
-        <button id="loadMyJobs">Load my jobs</button>
-        <span id="myJobsStatus" class="muted"></span>
-      </div>
       <div id="myJobsList" class="list"><div class="placeholder">Your jobs will appear here…</div></div>
       <div class="row">
         <span id="earnings" class="muted"></span>

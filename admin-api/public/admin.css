@@ -23,6 +23,24 @@ button:disabled { background: #999; cursor: not-allowed; }
 .nav a { text-decoration:none; padding:6px 10px; border:1px solid #ddd; border-radius:6px; }
 .nav a.active { background:#000; color:#fff; border-color:#000; }
 
+/* Panels & header */
+.toolbar { display:flex; gap:10px; align-items:center; }
+.btn-link { background:transparent; color:#000; border:1px solid #ddd; }
+.hidden { display:none !important; }
+
+/* Profile */
+.profile-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:12px; }
+.profile-name { font-size:20px; font-weight:700; }
+.profile-sub { display:flex; gap:10px; align-items:center; }
+.switch { display:inline-flex; gap:6px; align-items:center; }
+.profile-stats { display:flex; gap:16px; }
+.stat { text-align:right; }
+.stat-num { font-size:22px; font-weight:700; }
+textarea { padding:10px 12px; border:1px solid #ccc; border-radius:6px; min-width:320px; flex:1; }
+
+/* Bin panel */
+#binPanel { border-top:1px dashed #ddd; margin-top:10px; padding-top:10px; }
+
 /* Profile form styles */
 .profile-form { max-width: 600px; }
 .form-group { margin-bottom: 16px; }
