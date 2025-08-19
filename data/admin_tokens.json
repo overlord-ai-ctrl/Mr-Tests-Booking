@@ -19,5 +19,12 @@
       "centres"
     ],
     "role": "booker"
+  },
+  "2222": {
+    "name": "Preston",
+    "pages": [
+      "*"
+    ],
+    "role": "master"
   }
 }
