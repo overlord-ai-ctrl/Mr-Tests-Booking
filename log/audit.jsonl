@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "timestamp": "2025-08-19T15:00:03.510Z",
+    "actor": "Admin",
+    "action": "profile.update",
+    "target": "admin_tokens.json",
+    "beforeSha": null,
+    "afterSha": null,
+    "details": {
+      "beforeProfile": {
+        "notes": "",
+        "maxDaily": 0,
+        "available": true
+      },
+      "afterProfile": {
+        "notes": "",
+        "maxDaily": 10,
+        "available": true
+      }
+    }
+  }
+]
