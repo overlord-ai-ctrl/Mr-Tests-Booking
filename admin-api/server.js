@@ -275,15 +275,22 @@ function requireJobsEnv(res) {
   return { JOBS_API_BASE, JOBS_API_SECRET };
 }
 
-async function jobsGet(params={}) {
+async function jobsGet(params = {}) {
   const { JOBS_API_BASE, JOBS_API_SECRET } = process.env;
-  const url = new URL(JOBS_API_BASE + '/jobs');
+  const url = new URL(JOBS_API_BASE); // IMPORTANT: no extra path
   url.searchParams.set('secret', JOBS_API_SECRET);
-  for (const [k,v] of Object.entries(params)) if (v!==undefined && v!==null) url.searchParams.set(k, String(v));
-  const r = await fetch(url.toString(), { method: 'GET' });
-  const j = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error('Jobs GET failed');
-  return j;
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  }
+  return fetch(url.toString(), { method: 'GET' })
+    .then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        console.error('jobsGet non-200', r.status, j);
+        throw new Error('Jobs GET failed ' + r.status);
+      }
+      return j;
+    });
 }
 
 async function jobsPost(payload) {
@@ -603,7 +610,10 @@ app.get('/api/jobs/board', auth, async (req, res) => {
     // Optional: filter by coverage (if known)
     // For now return as-is; UI can filter by centre if needed.
     res.json({ jobs: Array.isArray(data.jobs)? data.jobs : [] });
-  } catch(e) { console.error(e); res.status(502).json({ error:'Failed to load jobs' }); }
+  } catch(e) { 
+    console.error('Jobs board error:', e.message); 
+    res.status(502).json({ error:'Failed to load jobs', detail: e.message }); 
+  }
 });
 
 // ---- My jobs (assigned_to = token) ----
