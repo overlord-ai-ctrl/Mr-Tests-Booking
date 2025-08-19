@@ -84,6 +84,93 @@
     return { toggleMode, updateToggle };
   })();
 
+  // Action lock utility to prevent double-clicks
+  const ActionLock = (() => {
+    const locks = new Map();
+    
+    const withActionLock = async (key, fn, lockMs = 2000) => {
+      if (locks.has(key)) {
+        console.log(`Action ${key} already in progress`);
+        return;
+      }
+      
+      locks.set(key, true);
+      const startTime = Date.now();
+      
+      try {
+        return await fn();
+      } finally {
+        const elapsed = Date.now() - startTime;
+        const remaining = Math.max(0, lockMs - elapsed);
+        setTimeout(() => locks.delete(key), remaining);
+      }
+    };
+    
+    return { withActionLock };
+  })();
+
+  // Busy overlay management
+  const BusyOverlay = (() => {
+    const overlay = document.getElementById('screenBusy');
+    
+    const show = (message = 'Processing...') => {
+      if (overlay) {
+        overlay.querySelector('.busy-message').textContent = message;
+        overlay.classList.remove('d-none');
+      }
+    };
+    
+    const hide = () => {
+      if (overlay) {
+        overlay.classList.add('d-none');
+      }
+    };
+    
+    return { show, hide };
+  })();
+
+  // Offline detection and queue
+  const OfflineQueue = (() => {
+    let isOffline = false;
+    let queuedActions = [];
+    
+    const addToQueue = (action) => {
+      queuedActions.push(action);
+      showToast('Action queued - will retry when online', 'warn');
+    };
+    
+    const processQueue = async () => {
+      if (queuedActions.length === 0) return;
+      
+      showToast(`Processing ${queuedActions.length} queued actions...`, 'info');
+      
+      for (const action of queuedActions) {
+        try {
+          await action();
+        } catch (e) {
+          console.error('Queued action failed:', e);
+        }
+      }
+      
+      queuedActions = [];
+      showToast('All queued actions processed', 'success');
+    };
+    
+    // Listen for online/offline events
+    window.addEventListener('online', () => {
+      isOffline = false;
+      ErrorHandler.hideError();
+      processQueue();
+    });
+    
+    window.addEventListener('offline', () => {
+      isOffline = true;
+      ErrorHandler.showError();
+    });
+    
+    return { isOffline: () => isOffline, addToQueue };
+  })();
+
   // Error handling system
   const ErrorHandler = (() => {
     const errorBanner = document.getElementById('netErr');
@@ -114,10 +201,25 @@
     return { showError, hideError, setLastRequest };
   })();
 
-  // Enhanced API with error handling and rate limit backoff
-  async function api(path, method="GET", body) {
+  // Simple error bar helpers
+  function showErr(msg='Something went wrong. Please try again.'){
+    const el = document.getElementById('errBar'); if(!el) return;
+    el.textContent = msg;
+    el.classList.remove('d-none');
+    clearTimeout(showErr._t);
+    showErr._t = setTimeout(()=>el.classList.add('d-none'), 4000);
+  }
+  function hideErr(){ document.getElementById('errBar')?.classList.add('d-none'); }
+
+  // Enhanced API with error handling, rate limit backoff, and idempotency
+  async function api(path, method="GET", body, actionKey = null) {
     const headers = { "Content-Type": "application/json" };
     if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
+    
+    // Add idempotency key for mutating operations
+    if (method !== "GET" && actionKey) {
+      headers["X-Idempotency-Key"] = `${actionKey}:${Date.now()}`;
+    }
     
     const makeRequest = async () => {
       const res = await fetch(API + path, {
@@ -127,6 +229,16 @@
       if (!res.ok) {
         let errorText = "";
         try { errorText = await res.text(); } catch {}
+        
+        // Handle idempotent replay
+        if (res.status === 409) {
+          try {
+            const data = JSON.parse(errorText);
+            if (data.ok && data.replay) {
+              return data; // Treat as success
+            }
+          } catch {}
+        }
         
         // Handle rate limiting
         if (res.status === 429) {
@@ -139,10 +251,22 @@
           return makeRequest();
         }
         
+        // Handle validation errors
+        if (res.status === 400) {
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.error === 'validation_error') {
+              showToast(`Validation error: ${errorData.hint || 'Invalid input'}`, 'error');
+              return { error: 'validation', details: errorData };
+            }
+          } catch {}
+        }
+        
         throw new Error(`${method} ${path} ${res.status} ${errorText}`);
       }
       
       ErrorHandler.hideError();
+      hideErr(); // Hide simple error bar on success
       return res.json();
     };
     
@@ -150,8 +274,9 @@
       return await makeRequest();
     } catch (e) {
       console.error('API error:', e);
+      showErr(e?.message || 'Request failed. Please retry.');
       ErrorHandler.showError();
-      ErrorHandler.setLastRequest(() => api(path, method, body));
+      ErrorHandler.setLastRequest(() => api(path, method, body, actionKey));
       throw e;
     }
   }
@@ -161,51 +286,71 @@
     return pages.includes('*') || pages.includes('admins');
   }
 
+  function showOnlyBookerTabs(){
+    const q = (sel)=>Array.from(document.querySelectorAll(sel));
+    // Always show these four for bookers:
+    ['centres','profile','jobs','myjobs'].forEach(key=>{
+      const el = document.querySelector(`[data-nav="${key}"]`)?.closest('li, .nav-item') || document.querySelector(`[data-nav="${key}"]`);
+      el?.classList.remove('d-none');
+    });
+    // Hide Admin Codes:
+    const adminEl = document.querySelector('[data-nav="admins"]')?.closest('li, .nav-item') || document.querySelector('[data-nav="admins"]');
+    adminEl?.classList.add('d-none');
+  }
+
+  function setActiveTab(key){
+    // generic tab switcher that also loads data
+    document.querySelectorAll('#nav .nav-link').forEach(a=>{
+      const on = a.dataset.nav === key;
+      a.classList.toggle('active', on);
+    });
+    document.querySelectorAll('[data-page]').forEach(p=>{
+      const on = p.getAttribute('data-page') === key;
+      p.hidden = !on;
+    });
+    // call loaders
+    if (key === 'jobs') loadJobs?.();
+    if (key === 'myjobs') loadMyJobs?.();
+    if (key === 'profile') loadProfile?.();
+    if (key === 'centres') loadCentres?.();
+  }
+
   function applyVisibility() {
     if (ME?.name) { 
       q("#userName").textContent = ME.name; 
       q("#userRole").textContent = `(${ME.role || 'booker'})`;
       q("#userBox").hidden = false; 
     }
-    const pages = ME?.pages || [];
-    const all = pages.includes("*");
-    document.querySelectorAll("[data-page]").forEach(sec => {
-      const tag = sec.getAttribute("data-page") || "";
-      sec.hidden = !all && !pages.includes(tag);
-    });
+    
+    // call this after successful unlock
+    if (isMaster && isMaster()) {
+      // masters see everything; ensure all tabs visible
+      document.querySelectorAll('#nav .nav-link').forEach(a=> a.closest('li, .nav-item')?.classList.remove('d-none'));
+    } else {
+      showOnlyBookerTabs();
+      // If active tab is hidden (e.g., defaulted to Admins), switch to Jobs Board
+      const active = document.querySelector('#nav .nav-link.active');
+      if (!active || active.dataset.nav === 'admins' || active.dataset.nav === 'centres') {
+        setActiveTab('jobs'); // function below
+      }
+    }
   }
 
   function showNav() {
-    const pages = ME?.pages || [];
-    const all = pages.includes("*");
     const nav = document.getElementById("nav");
     if (!nav) return;
+    
+    // Set up click handlers for all nav links
     const links = nav.querySelectorAll("a[data-nav]");
-    let anyVisible = false;
     links.forEach(a => {
-      const tag = a.getAttribute("data-nav");
-      let can = all || pages.includes(tag);
-      
-      // Hide Admin Codes for non-master users
-      if (tag === 'admins' && !isMaster()) {
-        can = false;
-      }
-      
-      a.style.display = can ? "inline-flex" : "none";
-      anyVisible ||= can;
       a.onclick = (e) => {
         e.preventDefault();
-        document.querySelectorAll("a[data-nav]").forEach(x => x.classList.remove("active"));
-        a.classList.add("active");
-        document.querySelectorAll("[data-page]").forEach(sec => {
-          sec.hidden = sec.getAttribute("data-page") !== tag;
-        });
+        const key = a.dataset.nav;
+        setActiveTab(key);
       };
     });
-    nav.hidden = !anyVisible;
-    // auto-select first visible link
-    const first = Array.from(links).find(a => a.style.display !== "none");
-    if (first) first.click();
+    
+    nav.hidden = false;
   }
 
   async function unlock() {
@@ -227,10 +372,12 @@
       loadProfileStats();
       if (typeof loadCodes === 'function' && isMaster()) loadCodes();
       
-      // Defer jobs loads to active tab only
-      const firstTab = document.querySelector('#nav .nav-link.active')?.dataset?.nav || 'centres';
-      if (firstTab === 'jobs') loadJobs?.();
-      if (firstTab === 'myjobs') loadMyJobs?.();
+      // Default landing for bookers: Jobs Board
+      if (!(isMaster && isMaster())) {
+        setActiveTab('jobs');
+        // Warm up My Jobs in background (optional)
+        setTimeout(()=>loadMyJobs?.(), 300);
+      }
     } catch (e) {
       console.error(e);
       status("authStatus", "Invalid code");
@@ -613,79 +760,205 @@
     }
   }
 
-  // Claim and complete job functions with overlay
+  // Claim and complete job functions with action locks and enhanced error handling
   async function claimJob(jobId){
-    try{
-      showBusy('Claiming job…');
-      await api('/api/jobs/claim','POST',{ job_id: jobId });
-      hideBusy();
-      showToast?.('Claimed ✓','success');
-      loadJobs?.(); 
-      loadMyJobs?.();
-    }catch(e){
-      hideBusy();
-      alert('Failed to claim this job. Please try again.');
-    }
+    return ActionLock.withActionLock(`claim:${jobId}`, async () => {
+      // Check if offline
+      if (OfflineQueue.isOffline()) {
+        OfflineQueue.addToQueue(() => claimJob(jobId));
+        return;
+      }
+      
+      try {
+        BusyOverlay.show('Claiming job…');
+        const result = await api('/api/jobs/claim', 'POST', { job_id: jobId }, `claim:${jobId}`);
+        
+        if (result.error === 'validation') {
+          showToast('Invalid job ID', 'error');
+          return;
+        }
+        
+        BusyOverlay.hide();
+        showToast('Claimed ✓', 'success');
+        
+        // Scroll claimed card into view and pulse green
+        const card = document.querySelector(`[data-job-id="${jobId}"]`);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.style.transition = 'background-color 0.3s';
+          card.style.backgroundColor = '#d4edda';
+          setTimeout(() => {
+            card.style.backgroundColor = '';
+            card.style.transition = '';
+          }, 2000);
+        }
+        
+        loadJobs?.(); 
+        loadMyJobs?.();
+      } catch(e) {
+        BusyOverlay.hide();
+        showErr('Failed to claim job. Please try again.');
+        showToast('Failed to claim job. Please try again.', 'error');
+        console.error('Claim error:', e);
+      }
+    });
   }
 
   async function completeJob(jobId){
-    try{
-      showBusy('Completing job…');
-      await api('/api/jobs/complete','POST',{ job_id: jobId });
-      hideBusy();
-      showToast?.('Completed ✓','success');
-      loadMyJobs?.(); 
-      loadJobs?.();
-    }catch(e){
-      hideBusy();
-      alert('Failed to complete this job.');
-    }
+    return ActionLock.withActionLock(`complete:${jobId}`, async () => {
+      // Check if offline
+      if (OfflineQueue.isOffline()) {
+        OfflineQueue.addToQueue(() => completeJob(jobId));
+        return;
+      }
+      
+      try {
+        BusyOverlay.show('Completing job…');
+        const result = await api('/api/jobs/complete', 'POST', { job_id: jobId }, `complete:${jobId}`);
+        
+        if (result.error === 'validation') {
+          showToast('Invalid job ID', 'error');
+          return;
+        }
+        
+        BusyOverlay.hide();
+        showToast('Completed ✓', 'success');
+        
+        // Replace action buttons with completed badge
+        const card = document.querySelector(`[data-job-id="${jobId}"]`);
+        if (card) {
+          const actionsDiv = card.querySelector('.job-actions');
+          if (actionsDiv) {
+            actionsDiv.innerHTML = '<span class="badge bg-success">Completed ✓</span>';
+          }
+        }
+        
+        loadMyJobs?.(); 
+        loadJobs?.();
+      } catch(e) {
+        BusyOverlay.hide();
+        showErr('Failed to complete job. Please try again.');
+        showToast('Failed to complete job. Please try again.', 'error');
+        console.error('Complete error:', e);
+      }
+    });
   }
 
-  // Offer confirmation flow functions
+  // Offer confirmation flow functions with action locks and validation
   async function sendOffer(jobId, centre, date, time, note) {
-    try {
-      showBusy('Sending to client…');
-      await api('/api/jobs/offer', 'POST', { job_id: jobId, centre, date, time, note });
-      hideBusy();
-      showToast?.('Offer sent ✓', 'success');
-      loadMyJobs?.();
-      loadJobs?.();
-    } catch(e) {
-      hideBusy();
-      alert('Failed to send offer. Please try again.');
-    }
+    return ActionLock.withActionLock(`offer:${jobId}`, async () => {
+      // Check if offline
+      if (OfflineQueue.isOffline()) {
+        OfflineQueue.addToQueue(() => sendOffer(jobId, centre, date, time, note));
+        return;
+      }
+      
+      // Client-side validation
+      const offerDateTime = new Date(`${date} ${time}`);
+      if (isNaN(offerDateTime.getTime()) || offerDateTime <= new Date()) {
+        showToast('Offer date and time must be in the future', 'error');
+        return;
+      }
+      
+      try {
+        BusyOverlay.show('Sending to client…');
+        const result = await api('/api/jobs/offer', 'POST', { job_id: jobId, centre, date, time, note }, `offer:${jobId}`);
+        
+        if (result.error === 'validation') {
+          showToast(`Validation error: ${result.details?.hint || 'Invalid input'}`, 'error');
+          return;
+        }
+        
+        BusyOverlay.hide();
+        showToast('Offer sent ✓', 'success');
+        loadMyJobs?.();
+        loadJobs?.();
+      } catch(e) {
+        BusyOverlay.hide();
+        showErr('Failed to send offer. Please try again.');
+        showToast('Failed to send offer. Please try again.', 'error');
+        console.error('Offer error:', e);
+      }
+    });
   }
 
   async function nudgeOffer(jobId) {
-    try {
-      await api('/api/jobs/offer/nudge', 'POST', { job_id: jobId });
-      showToast?.('Nudge sent ✓', 'success');
-    } catch(e) {
-      alert('Failed to send nudge.');
-    }
+    return ActionLock.withActionLock(`nudge:${jobId}`, async () => {
+      // Check if offline
+      if (OfflineQueue.isOffline()) {
+        OfflineQueue.addToQueue(() => nudgeOffer(jobId));
+        return;
+      }
+      
+      try {
+        const result = await api('/api/jobs/offer/nudge', 'POST', { job_id: jobId }, `nudge:${jobId}`);
+        
+        if (result.error === 'validation') {
+          showToast('Invalid job ID', 'error');
+          return;
+        }
+        
+        showToast('Nudge sent ✓', 'success');
+      } catch(e) {
+        showErr('Failed to send nudge. Please try again.');
+        showToast('Failed to send nudge. Please try again.', 'error');
+        console.error('Nudge error:', e);
+      }
+    });
   }
 
   async function extendOffer(jobId, minutes = 15) {
-    try {
-      await api('/api/jobs/offer/extend', 'POST', { job_id: jobId, minutes });
-      showToast?.(`Extended by ${minutes}m ✓`, 'success');
-      loadMyJobs?.();
-      loadJobs?.();
-    } catch(e) {
-      alert('Failed to extend offer.');
-    }
+    return ActionLock.withActionLock(`extend:${jobId}`, async () => {
+      // Check if offline
+      if (OfflineQueue.isOffline()) {
+        OfflineQueue.addToQueue(() => extendOffer(jobId, minutes));
+        return;
+      }
+      
+      try {
+        const result = await api('/api/jobs/offer/extend', 'POST', { job_id: jobId, minutes }, `extend:${jobId}`);
+        
+        if (result.error === 'validation') {
+          showToast('Invalid input - minutes must be 1-240', 'error');
+          return;
+        }
+        
+        showToast(`Extended by ${minutes}m ✓`, 'success');
+        loadMyJobs?.();
+        loadJobs?.();
+      } catch(e) {
+        showErr('Failed to extend offer. Please try again.');
+        showToast('Failed to extend offer. Please try again.', 'error');
+        console.error('Extend error:', e);
+      }
+    });
   }
 
   async function markClientReply(jobId, reply) {
-    try {
-      await api('/api/jobs/mark-client-reply', 'POST', { job_id: jobId, reply });
-      showToast?.(`Marked as ${reply} ✓`, 'success');
-      loadMyJobs?.();
-      loadJobs?.();
-    } catch(e) {
-      alert('Failed to mark reply.');
-    }
+    return ActionLock.withActionLock(`reply:${jobId}`, async () => {
+      // Check if offline
+      if (OfflineQueue.isOffline()) {
+        OfflineQueue.addToQueue(() => markClientReply(jobId, reply));
+        return;
+      }
+      
+      try {
+        const result = await api('/api/jobs/mark-client-reply', 'POST', { job_id: jobId, reply }, `reply:${jobId}`);
+        
+        if (result.error === 'validation') {
+          showToast('Invalid reply - must be YES or NO', 'error');
+          return;
+        }
+        
+        showToast(`Marked as ${reply} ✓`, 'success');
+        loadMyJobs?.();
+        loadJobs?.();
+      } catch(e) {
+        showErr('Failed to mark reply. Please try again.');
+        showToast('Failed to mark reply. Please try again.', 'error');
+        console.error('Mark reply error:', e);
+      }
+    });
   }
 
   // BUTTON FACTORIES
