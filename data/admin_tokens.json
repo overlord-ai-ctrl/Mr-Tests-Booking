@@ -5,7 +5,10 @@
       "centres",
       "admins"
     ],
-    "role": "master"
+    "role": "master",
+    "notes": "",
+    "maxDaily": 10,
+    "available": true
   },
   "1231": {
     "name": "Nicola",
