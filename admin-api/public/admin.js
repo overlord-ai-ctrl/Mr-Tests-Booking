@@ -286,51 +286,71 @@
     return pages.includes('*') || pages.includes('admins');
   }
 
+  function showOnlyBookerTabs(){
+    const q = (sel)=>Array.from(document.querySelectorAll(sel));
+    // Always show these four for bookers:
+    ['centres','profile','jobs','myjobs'].forEach(key=>{
+      const el = document.querySelector(`[data-nav="${key}"]`)?.closest('li, .nav-item') || document.querySelector(`[data-nav="${key}"]`);
+      el?.classList.remove('d-none');
+    });
+    // Hide Admin Codes:
+    const adminEl = document.querySelector('[data-nav="admins"]')?.closest('li, .nav-item') || document.querySelector('[data-nav="admins"]');
+    adminEl?.classList.add('d-none');
+  }
+
+  function setActiveTab(key){
+    // generic tab switcher that also loads data
+    document.querySelectorAll('#nav .nav-link').forEach(a=>{
+      const on = a.dataset.nav === key;
+      a.classList.toggle('active', on);
+    });
+    document.querySelectorAll('[data-page]').forEach(p=>{
+      const on = p.getAttribute('data-page') === key;
+      p.hidden = !on;
+    });
+    // call loaders
+    if (key === 'jobs') loadJobs?.();
+    if (key === 'myjobs') loadMyJobs?.();
+    if (key === 'profile') loadProfile?.();
+    if (key === 'centres') loadCentres?.();
+  }
+
   function applyVisibility() {
     if (ME?.name) { 
       q("#userName").textContent = ME.name; 
       q("#userRole").textContent = `(${ME.role || 'booker'})`;
       q("#userBox").hidden = false; 
     }
-    const pages = ME?.pages || [];
-    const all = pages.includes("*");
-    document.querySelectorAll("[data-page]").forEach(sec => {
-      const tag = sec.getAttribute("data-page") || "";
-      sec.hidden = !all && !pages.includes(tag);
-    });
+    
+    // call this after successful unlock
+    if (isMaster && isMaster()) {
+      // masters see everything; ensure all tabs visible
+      document.querySelectorAll('#nav .nav-link').forEach(a=> a.closest('li, .nav-item')?.classList.remove('d-none'));
+    } else {
+      showOnlyBookerTabs();
+      // If active tab is hidden (e.g., defaulted to Admins), switch to Jobs Board
+      const active = document.querySelector('#nav .nav-link.active');
+      if (!active || active.dataset.nav === 'admins' || active.dataset.nav === 'centres') {
+        setActiveTab('jobs'); // function below
+      }
+    }
   }
 
   function showNav() {
-    const pages = ME?.pages || [];
-    const all = pages.includes("*");
     const nav = document.getElementById("nav");
     if (!nav) return;
+    
+    // Set up click handlers for all nav links
     const links = nav.querySelectorAll("a[data-nav]");
-    let anyVisible = false;
     links.forEach(a => {
-      const tag = a.getAttribute("data-nav");
-      let can = all || pages.includes(tag);
-      
-      // Hide Admin Codes for non-master users
-      if (tag === 'admins' && !isMaster()) {
-        can = false;
-      }
-      
-      a.style.display = can ? "inline-flex" : "none";
-      anyVisible ||= can;
       a.onclick = (e) => {
         e.preventDefault();
-        document.querySelectorAll("a[data-nav]").forEach(x => x.classList.remove("active"));
-        a.classList.add("active");
-        document.querySelectorAll("[data-page]").forEach(sec => {
-          sec.hidden = sec.getAttribute("data-page") !== tag;
-        });
+        const key = a.dataset.nav;
+        setActiveTab(key);
       };
     });
-    nav.hidden = !anyVisible;
-    // auto-select first visible link
-    const first = Array.from(links).find(a => a.style.display !== "none");
-    if (first) first.click();
+    
+    nav.hidden = false;
   }
 
   async function unlock() {
@@ -352,10 +372,12 @@
       loadProfileStats();
       if (typeof loadCodes === 'function' && isMaster()) loadCodes();
       
-      // Defer jobs loads to active tab only
-      const firstTab = document.querySelector('#nav .nav-link.active')?.dataset?.nav || 'centres';
-      if (firstTab === 'jobs') loadJobs?.();
-      if (firstTab === 'myjobs') loadMyJobs?.();
+      // Default landing for bookers: Jobs Board
+      if (!(isMaster && isMaster())) {
+        setActiveTab('jobs');
+        // Warm up My Jobs in background (optional)
+        setTimeout(()=>loadMyJobs?.(), 300);
+      }
     } catch (e) {
       console.error(e);
       status("authStatus", "Invalid code");

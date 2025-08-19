@@ -847,3 +847,8 @@ body.dark .screen-busy-box {
 .errbar.d-none { 
   display:none; 
 }
+
+/* ===== UTILITY CLASSES ===== */
+.d-none { 
+  display: none !important; 
+}
