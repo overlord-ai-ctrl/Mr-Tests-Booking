@@ -3,6 +3,8 @@
   const API = ""; // same-origin
   let TOKEN = "";
   let ME = null;
+  let currentCentresSha = null;
+  let currentBinSha = null;
 
   const status = (id, txt, ok=false) => {
     const el = q("#" + id);
@@ -28,7 +30,11 @@
   }
 
   function applyVisibility() {
-    if (ME?.name) { q("#userName").textContent = ME.name; q("#userBox").hidden = false; }
+    if (ME?.name) { 
+      q("#userName").textContent = ME.name; 
+      q("#userRole").textContent = `(${ME.role || 'booker'})`;
+      q("#userBox").hidden = false; 
+    }
     const pages = ME?.pages || ["*"]; const all = pages.includes("*");
     document.querySelectorAll("[data-page]").forEach(sec => {
       const tag = sec.getAttribute("data-page") || "";
@@ -81,11 +87,59 @@
     }
   }
 
+  // Search and filter functionality
+  function filterCentres() {
+    const searchTerm = q("#search").value.toLowerCase();
+    const rows = q("#centresBox").querySelectorAll(".row");
+    
+    rows.forEach(row => {
+      const name = row.querySelector("div")?.textContent?.toLowerCase() || "";
+      const id = row.querySelector(".badge")?.textContent?.toLowerCase() || "";
+      const matches = name.includes(searchTerm) || id.includes(searchTerm);
+      row.classList.toggle("hidden", !matches);
+    });
+  }
+
+  function selectAllVisible() {
+    const visibleRows = q("#centresBox").querySelectorAll(".row:not(.hidden)");
+    visibleRows.forEach(row => {
+      const checkbox = row.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = true;
+    });
+  }
+
+  function selectNone() {
+    const checkboxes = q("#centresBox").querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(checkbox => checkbox.checked = false);
+  }
+
+  function exportCsv() {
+    const rows = q("#centresBox").querySelectorAll(".row");
+    let csv = "id,name,selected\n";
+    
+    rows.forEach(row => {
+      const id = row.querySelector(".badge")?.textContent || "";
+      const name = row.querySelector("div")?.textContent || "";
+      const checkbox = row.querySelector('input[type="checkbox"]');
+      const selected = checkbox?.checked ? "true" : "false";
+      csv += `"${id}","${name}",${selected}\n`;
+    });
+    
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "centres-coverage.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function loadCentres() {
     status("status", "Loading…");
     try {
       const data = await api("/api/test-centres", "GET");
       const centres = data.centres || [];
+      currentCentresSha = data.sha;
       const box = q("#centresBox"); box.innerHTML = "";
       if (!centres.length) { box.innerHTML = '<div class="placeholder">No centres yet.</div>'; status("status","Loaded",true); return; }
       centres.forEach(c => {
@@ -95,12 +149,13 @@
         row.append(name, id);
         
         // Add delete button for masters
-        const del = document.createElement('button');
-        del.textContent = 'Delete';
-        del.className = 'danger';
-        del.onclick = () => deleteCentre(c.id);
-        if (!isMaster()) del.style.display = 'none';
-        row.appendChild(del);
+        if (isMaster()) {
+          const del = document.createElement('button');
+          del.textContent = 'Delete';
+          del.className = 'danger';
+          del.onclick = () => deleteCentre(c.id);
+          row.appendChild(del);
+        }
         
         box.appendChild(row);
       });
@@ -115,7 +170,7 @@
     if (!confirm(`Delete centre "${id}"?`)) return;
     status('status','Deleting…');
     try {
-      await api('/api/test-centres','PUT',{ mode:'delete', ids:[id] });
+      await api('/api/test-centres','PUT',{ mode:'delete', ids:[id], sha: currentCentresSha });
       // remove from UI
       const box = document.getElementById('centresBox');
       [...box.querySelectorAll('.row')].forEach(row => {
@@ -125,7 +180,14 @@
       // also uncheck/remove from My coverage
       const chk = document.querySelector(`#myCoverageBox input[value="${id}"]`);
       if (chk && chk.closest('.row')) chk.closest('.row').remove();
-    } catch (e) { console.error(e); status('status','Failed to delete'); }
+    } catch (e) { 
+      console.error(e); 
+      if (e.message.includes('409')) {
+        status('status','Data changed—please reload');
+      } else {
+        status('status','Failed to delete'); 
+      }
+    }
   }
 
   async function buildCoverageChecklist(centres) {
@@ -173,16 +235,91 @@
       row.append(nameDiv, idSpan);
       
       // Add delete button for masters
-      const del = document.createElement('button');
-      del.textContent = 'Delete';
-      del.className = 'danger';
-      del.onclick = () => deleteCentre(id);
-      if (!isMaster()) del.style.display = 'none';
-      row.appendChild(del);
+      if (isMaster()) {
+        const del = document.createElement('button');
+        del.textContent = 'Delete';
+        del.className = 'danger';
+        del.onclick = () => deleteCentre(id);
+        row.appendChild(del);
+      }
       
       q("#centresBox").appendChild(row);
       nameEl.value=""; idEl.value=""; status("appendStatus","Appended & committed ✓", true);
     } catch (e) { console.error(e); status("appendStatus","Failed to append"); }
+  }
+
+  // Recycle bin functionality
+  async function loadBin() {
+    status("binStatus", "Loading…");
+    try {
+      const data = await api("/api/test-centres-bin", "GET");
+      const centres = data.centres || [];
+      currentBinSha = data.sha;
+      const box = q("#binBox"); box.innerHTML = "";
+      if (!centres.length) { box.innerHTML = '<div class="placeholder">No deleted centres.</div>'; status("binStatus","Loaded",true); return; }
+      centres.forEach(c => {
+        const row = document.createElement("div"); row.className="row";
+        const name = document.createElement("div"); name.textContent = c.name;
+        const id = document.createElement("span"); id.className = "badge"; id.textContent = c.id;
+        const restore = document.createElement('button');
+        restore.textContent = 'Restore';
+        restore.onclick = () => restoreCentre(c.id);
+        row.append(name, id, restore);
+        box.appendChild(row);
+      });
+      status("binStatus","Loaded",true);
+    } catch (e) { console.error(e); status("binStatus","Failed to load"); }
+  }
+
+  async function restoreCentre(id) {
+    if (!confirm(`Restore centre "${id}"?`)) return;
+    status('binStatus','Restoring…');
+    try {
+      await api('/api/test-centres','PUT',{ mode:'restore', ids:[id], sha: currentBinSha });
+      // remove from bin UI
+      const box = document.getElementById('binBox');
+      [...box.querySelectorAll('.row')].forEach(row => {
+        if (row.querySelector('.badge')?.textContent === id) row.remove();
+      });
+      status('binStatus','Restored ✓',true);
+    } catch (e) { 
+      console.error(e); 
+      if (e.message.includes('409')) {
+        status('binStatus','Data changed—please reload');
+      } else {
+        status('binStatus','Failed to restore'); 
+      }
+    }
+  }
+
+  // Profile functionality
+  async function loadMyProfile() {
+    try {
+      const profile = await api('/api/my-profile','GET');
+      q("#profileNotes").value = profile.notes || "";
+      q("#profileMaxDaily").value = profile.maxDaily || 0;
+      q("#profileAvailable").checked = profile.available !== false;
+    } catch (e) {
+      console.error(e);
+      status("profileStatus", "Failed to load profile");
+    }
+  }
+
+  async function saveMyProfile() {
+    const notes = q("#profileNotes").value.trim();
+    const maxDaily = parseInt(q("#profileMaxDaily").value) || 0;
+    const available = q("#profileAvailable").checked;
+    
+    if (maxDaily < 0) return status("profileStatus", "Max daily must be >= 0");
+    
+    status("profileStatus", "Saving…");
+    try {
+      await api('/api/my-profile','PUT',{ notes, maxDaily, available });
+      status("profileStatus", "Saved ✓", true);
+    } catch (e) { 
+      console.error(e); 
+      status("profileStatus", "Failed to save"); 
+    }
   }
 
   function renderCodesList(map) {
@@ -252,9 +389,23 @@
     q("#unlock").onclick = unlock;
     q("#load").onclick = loadCentres;
     q("#append").onclick = appendCentre;
+    q("#loadBin").onclick = loadBin;
+    q("#saveProfile").onclick = saveMyProfile;
     document.getElementById("loadCodes").onclick = loadCodes;
     document.getElementById("addCode").onclick = addCode;
     document.getElementById('saveCoverage').onclick = saveCoverage;
+    
+    // New event listeners
+    q("#search").oninput = filterCentres;
+    q("#selectAll").onclick = selectAllVisible;
+    q("#selectNone").onclick = selectNone;
+    q("#exportCsv").onclick = exportCsv;
+    
     if (saved) unlock();
+    
+    // Load profile when profile tab is shown
+    document.querySelector('a[data-nav="profile"]')?.addEventListener('click', () => {
+      setTimeout(loadMyProfile, 100);
+    });
   });
 })();

@@ -12,6 +12,7 @@
     <div class="spacer"></div>
     <div id="userBox" class="user-box" hidden>
       <span id="userName" class="user-name"></span>
+      <span id="userRole" class="user-role"></span>
     </div>
   </header>
 
@@ -30,6 +31,8 @@
   <main id="app" hidden>
     <nav id="nav" class="nav" hidden>
       <a href="#" data-nav="centres">Centres</a>
+      <a href="#" data-nav="bin">Recycle Bin</a>
+      <a href="#" data-nav="profile">Profile</a>
       <a href="#" data-nav="admins">Admin Codes</a>
     </nav>
 
@@ -37,6 +40,10 @@
       <h2>Preferred Test Centres</h2>
       <div class="row">
         <button id="load">Load centres</button>
+        <input id="search" type="text" placeholder="Search centres..." class="search-input"/>
+        <button id="selectAll">Select all</button>
+        <button id="selectNone">Select none</button>
+        <button id="exportCsv">Export CSV</button>
         <span class="spacer"></span>
         <span id="status" class="muted"></span>
       </div>
@@ -56,6 +63,41 @@
       <div class="row">
         <button id="saveCoverage">Save my coverage</button>
         <span id="coverageStatus" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="panel" data-page="bin" hidden>
+      <h2>Recycle Bin</h2>
+      <div class="row">
+        <button id="loadBin">Load deleted centres</button>
+        <span id="binStatus" class="muted"></span>
+      </div>
+      <div id="binBox" class="list">
+        <div class="placeholder">Deleted centres will appear here…</div>
+      </div>
+    </section>
+
+    <section class="panel" data-page="profile" hidden>
+      <h2>My Profile</h2>
+      <div class="profile-form">
+        <div class="form-group">
+          <label for="profileNotes">Notes</label>
+          <textarea id="profileNotes" placeholder="Personal notes..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="profileMaxDaily">Max daily bookings</label>
+          <input id="profileMaxDaily" type="number" min="0" placeholder="0"/>
+        </div>
+        <div class="form-group">
+          <label>
+            <input id="profileAvailable" type="checkbox" checked/>
+            Available for bookings
+          </label>
+        </div>
+        <div class="row">
+          <button id="saveProfile">Save profile</button>
+          <span id="profileStatus" class="muted"></span>
+        </div>
       </div>
     </section>
 
