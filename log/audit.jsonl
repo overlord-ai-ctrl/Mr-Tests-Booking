@@ -77,5 +77,18 @@
         "slough"
       ]
     }
+  },
+  {
+    "timestamp": "2025-08-19T22:03:45.448Z",
+    "actor": "Admin",
+    "action": "admins.append",
+    "target": "admin_tokens.json",
+    "beforeSha": null,
+    "afterSha": null,
+    "details": {
+      "code": "1234",
+      "name": "Rayhanna",
+      "role": "booker"
+    }
   }
 ]
