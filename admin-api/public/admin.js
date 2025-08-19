@@ -89,8 +89,11 @@
       loadProfileCentres();
       loadProfileStats();
       if (typeof loadCodes === 'function' && isMaster()) loadCodes();
-      if (typeof loadJobs === 'function') loadJobs();
-      if (typeof loadMyJobs === 'function') loadMyJobs();
+      
+      // Defer jobs loads to active tab only
+      const firstTab = document.querySelector('#nav .nav-link.active')?.dataset?.nav || 'centres';
+      if (firstTab === 'jobs') loadJobs?.();
+      if (firstTab === 'myjobs') loadMyJobs?.();
     } catch (e) {
       console.error(e);
       status("authStatus", "Invalid code");
