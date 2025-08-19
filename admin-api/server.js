@@ -4,6 +4,7 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Octokit } from "@octokit/rest";
+import compression from "compression";
 
 const {
   GITHUB_TOKEN,
@@ -55,13 +56,93 @@ function parsePage(req){
   return { limit, offset };
 }
 
+// Rate limiting system for job claims
+const RateLimiter = (() => {
+  const buckets = new Map();
+  const WINDOW_MS = 10000; // 10 seconds
+  const MAX_CLAIMS = 5; // 5 claims per window
+  
+  return {
+    checkLimit(token) {
+      const now = Date.now();
+      const bucket = buckets.get(token) || { claims: 0, resetTime: now + WINDOW_MS };
+      
+      // Reset bucket if window expired
+      if (now > bucket.resetTime) {
+        bucket.claims = 0;
+        bucket.resetTime = now + WINDOW_MS;
+      }
+      
+      // Check if limit exceeded
+      if (bucket.claims >= MAX_CLAIMS) {
+        const retryAfter = Math.ceil((bucket.resetTime - now) / 1000);
+        buckets.set(token, bucket);
+        return { allowed: false, retryAfter };
+      }
+      
+      // Allow claim
+      bucket.claims++;
+      buckets.set(token, bucket);
+      return { allowed: true };
+    }
+  };
+})();
+
+// Keep-alive system for Google Apps Script
+const KeepAlive = (() => {
+  let interval = null;
+  
+  return {
+    start() {
+      if (process.env.WARMUP_ENABLED === '1' && JOBS_API_BASE) {
+        console.log('Starting keep-alive for Google Apps Script...');
+        interval = setInterval(async () => {
+          try {
+            await fetch(JOBS_API_BASE, { 
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ secret: JOBS_API_SECRET, action: 'ping' })
+            });
+            console.log('Keep-alive ping sent to Apps Script');
+          } catch (e) {
+            console.log('Keep-alive ping failed:', e.message);
+          }
+        }, 5 * 60 * 1000); // 5 minutes
+      }
+    },
+    stop() {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    }
+  };
+})();
+
 const app = express();
+
+// Compression middleware
+app.use(compression());
+
+// CORS and JSON parsing
 app.use(cors(CORS_ORIGIN ? { origin: CORS_ORIGIN } : {}));
 app.use(express.json({ limit: "256kb" }));
 
-// Static UI
-app.use("/admin", express.static(publicDir));
-app.get("/admin", (_req, res) => res.sendFile(path.join(publicDir, "admin.html")));
+// Static UI with caching
+app.use("/admin", express.static(publicDir, {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes for static assets
+    }
+  }
+}));
+
+app.get("/admin", (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(publicDir, "admin.html"));
+});
 app.get("/", (_req, res) => res.redirect("/admin"));
 
 // GitHub helpers with sha support
@@ -669,6 +750,16 @@ app.post('/api/jobs/claim', auth, async (req, res) => {
   const env = requireJobsEnv(res); if (!env) return;
   try {
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/,'');
+    
+    // Check rate limit
+    const rateLimit = RateLimiter.checkLimit(token);
+    if (!rateLimit.allowed) {
+      return res.status(429).json({ 
+        error: 'Rate limit exceeded', 
+        retry_after: rateLimit.retryAfter 
+      });
+    }
+    
     const { job_id } = req.body || {};
     if (!job_id) return res.status(400).json({ error:'job_id required' });
     const out = await jobsPost({ action:'claim', booking_id: job_id, token });
@@ -752,4 +843,14 @@ app.post('/api/public/booking-request', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`[admin-api] listening on ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`[admin-api] listening on ${PORT}`);
+  KeepAlive.start();
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('Shutting down gracefully...');
+  KeepAlive.stop();
+  process.exit(0);
+});

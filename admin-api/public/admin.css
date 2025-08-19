@@ -258,3 +258,89 @@ textarea { padding:10px 12px; border:1px solid #ccc; border-radius:6px; min-widt
 /* Navigation icons */
 .nav .nav-link .bi { font-size: 1rem; vertical-align: -2px; }
 .nav .nav-link.active .bi { filter: brightness(0) invert(1); }
+
+/* Dark mode styles */
+body.dark {
+  background: #0b1020;
+  color: #e7ecff;
+}
+
+body.dark .card,
+body.dark .panel {
+  background: #1a1f2e;
+  border-color: #2d3748;
+  color: #e7ecff;
+}
+
+body.dark .btn-outline-secondary {
+  border-color: #4a5568;
+  color: #e7ecff;
+}
+
+body.dark .btn-outline-secondary:hover {
+  background: #4a5568;
+  color: #e7ecff;
+}
+
+body.dark .form-control {
+  background: #2d3748;
+  border-color: #4a5568;
+  color: #e7ecff;
+}
+
+body.dark .form-control:focus {
+  background: #2d3748;
+  border-color: #63b3ed;
+  color: #e7ecff;
+}
+
+body.dark .list {
+  background: #2d3748;
+  border-color: #4a5568;
+}
+
+body.dark .placeholder {
+  color: #a0aec0;
+}
+
+body.dark .text-primary {
+  color: #63b3ed !important;
+}
+
+body.dark .text-secondary {
+  color: #a0aec0 !important;
+}
+
+body.dark .form-text {
+  color: #a0aec0;
+}
+
+body.dark .alert-danger {
+  background: #742a2a;
+  border-color: #c53030;
+  color: #fed7d7;
+}
+
+body.dark .btn-light {
+  background: #4a5568;
+  border-color: #4a5568;
+  color: #e7ecff;
+}
+
+body.dark .btn-light:hover {
+  background: #2d3748;
+  border-color: #2d3748;
+  color: #e7ecff;
+}
+
+/* Error banner styles */
+.alert-danger {
+  border-radius: 8px;
+  border-left: 4px solid #dc3545;
+}
+
+#darkModeToggle {
+  font-size: 1.2rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}

@@ -13,9 +13,12 @@
   <div class="container my-4">
     <header class="d-flex align-items-center justify-content-between bg-white py-3 px-3 rounded shadow-sm mb-3">
       <h1 class="h4 mb-0 text-primary">Mr Tests — Admin</h1>
-      <div id="userBox" class="d-flex align-items-center gap-2" hidden>
-        <span class="badge text-bg-primary" id="userRole" style="display:none"></span>
-        <span id="userName" class="fw-semibold"></span>
+      <div class="d-flex align-items-center gap-2">
+        <div id="userBox" class="d-flex align-items-center gap-2" hidden>
+          <span class="badge text-bg-primary" id="userRole" style="display:none"></span>
+          <span id="userName" class="fw-semibold"></span>
+        </div>
+        <button id="darkModeToggle" class="btn btn-sm btn-outline-secondary" title="Toggle dark mode">🌙</button>
       </div>
     </header>
 
@@ -38,6 +41,9 @@
 
     <!-- App (hidden until authed) -->
     <main id="app" hidden>
+      <div id="netErr" class="alert alert-danger d-none">
+        Network error. <button id="retryBtn" class="btn btn-sm btn-light">Retry</button>
+      </div>
       <ul id="nav" class="nav nav-tabs mb-3" hidden>
         <li class="nav-item"><a class="nav-link active" data-nav="centres" href="#"><i class="bi bi-geo-alt me-2" aria-hidden="true"></i>Centres</a></li>
         <li class="nav-item"><a class="nav-link" data-nav="profile" href="#"><i class="bi bi-person-circle me-2" aria-hidden="true"></i>Profile</a></li>

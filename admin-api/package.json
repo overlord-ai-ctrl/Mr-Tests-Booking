@@ -2,7 +2,7 @@
   "name": "mr-tests-admin-api",
   "type": "module",
   "private": true,
-  "scripts": { 
+  "scripts": {
     "start": "node server.js",
     "build": "echo 'No build step required'",
     "deploy": "../scripts/deploy.sh",
@@ -13,8 +13,9 @@
     "lint": "echo 'No linting configured'"
   },
   "dependencies": {
-    "express": "^4.19.2",
     "@octokit/rest": "^20.1.1",
-    "cors": "^2.8.5"
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
   }
 }

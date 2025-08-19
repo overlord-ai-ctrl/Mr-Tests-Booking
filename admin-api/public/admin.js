@@ -50,14 +50,101 @@
   function setJobsAC(x){ if (x==='cancel' && _jobsAC) { try{_jobsAC.abort();}catch{} } else { _jobsAC = x; } }
   function setMyJobsAC(x){ if (x==='cancel' && _myJobsAC) { try{_myJobsAC.abort();}catch{} } else { _myJobsAC = x; } }
 
+  // Dark mode management
+  const DarkMode = (() => {
+    const toggle = document.getElementById('darkModeToggle');
+    const isDark = () => document.body.classList.contains('dark');
+    
+    const updateToggle = () => {
+      toggle.textContent = isDark() ? '☀️' : '🌙';
+      toggle.title = isDark() ? 'Switch to light mode' : 'Switch to dark mode';
+    };
+    
+    const toggleMode = () => {
+      document.body.classList.toggle('dark');
+      localStorage.setItem('mrtests_dark_mode', isDark());
+      updateToggle();
+    };
+    
+    // Initialize
+    if (localStorage.getItem('mrtests_dark_mode') === 'true') {
+      document.body.classList.add('dark');
+    }
+    updateToggle();
+    
+    return { toggleMode, updateToggle };
+  })();
+
+  // Error handling system
+  const ErrorHandler = (() => {
+    const errorBanner = document.getElementById('netErr');
+    const retryBtn = document.getElementById('retryBtn');
+    let lastFailedRequest = null;
+    
+    const showError = () => {
+      errorBanner.classList.remove('d-none');
+    };
+    
+    const hideError = () => {
+      errorBanner.classList.add('d-none');
+    };
+    
+    const setLastRequest = (fn) => {
+      lastFailedRequest = fn;
+    };
+    
+    const retry = () => {
+      if (lastFailedRequest) {
+        hideError();
+        lastFailedRequest();
+      }
+    };
+    
+    retryBtn.onclick = retry;
+    
+    return { showError, hideError, setLastRequest };
+  })();
+
+  // Enhanced API with error handling and rate limit backoff
   async function api(path, method="GET", body) {
     const headers = { "Content-Type": "application/json" };
     if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
-    const res = await fetch(API + path, {
-      method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store"
-    });
-    if (!res.ok) { let t=""; try{t=await res.text();}catch{} throw new Error(`${method} ${path} ${res.status} ${t}`); }
-    return res.json();
+    
+    const makeRequest = async () => {
+      const res = await fetch(API + path, {
+        method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store"
+      });
+      
+      if (!res.ok) {
+        let errorText = "";
+        try { errorText = await res.text(); } catch {}
+        
+        // Handle rate limiting
+        if (res.status === 429) {
+          const errorData = JSON.parse(errorText || '{}');
+          const retryAfter = errorData.retry_after || 3;
+          showToast(`Rate limited, retrying in ${retryAfter}s...`, 'warn');
+          
+          // Wait and retry once
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          return makeRequest();
+        }
+        
+        throw new Error(`${method} ${path} ${res.status} ${errorText}`);
+      }
+      
+      ErrorHandler.hideError();
+      return res.json();
+    };
+    
+    try {
+      return await makeRequest();
+    } catch (e) {
+      console.error('API error:', e);
+      ErrorHandler.showError();
+      ErrorHandler.setLastRequest(() => api(path, method, body));
+      throw e;
+    }
   }
 
   function isMaster() {
@@ -204,17 +291,22 @@
   }
 
   // JOBS BOARD
-  const _doLoadJobs = async () => {
+  const _doLoadJobs = async (prefetch = false) => {
     const list = document.getElementById('jobsList');
     const q = (document.getElementById('jobsSearch')?.value || '').toLowerCase();
-    if (list) renderSkeletonList?.(list, 3);
-    status?.('jobsStatus','Loading…');
+    
+    if (!prefetch && list) renderSkeletonList?.(list, 3);
+    if (!prefetch) status?.('jobsStatus','Loading…');
+    
     try {
       const headers = { "Content-Type": "application/json" };
       if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
       const res = await fetchWithAbort(`/api/jobs/board?q=${encodeURIComponent(q)}&limit=50&offset=0`, { method:'GET', headers }, setJobsAC);
       const data = await res.json();
       const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+      
+      if (prefetch) return; // Don't render if prefetching
+      
       list.innerHTML = '';
       if (!jobs.length) {
         list.innerHTML = '<div class="placeholder">No open jobs.</div>';
@@ -241,28 +333,33 @@
     } catch(e) {
       if (e.name === 'AbortError') return; // expected on new search
       console.error(e);
-      list.innerHTML = '<div class="placeholder">Failed to load jobs.</div>';
-      status?.('jobsStatus','Failed');
+      if (!prefetch) {
+        list.innerHTML = '<div class="placeholder">Failed to load jobs.</div>';
+        status?.('jobsStatus','Failed');
+      }
     }
   };
 
-  async function loadJobs() {
-    showToast('Refreshing jobs…');
-    await _doLoadJobs();
+  async function loadJobs(prefetch = false) {
+    if (!prefetch) showToast('Refreshing jobs…');
+    await _doLoadJobs(prefetch);
   }
 
   // MY JOBS
-  async function loadMyJobs() {
-    showToast('Refreshing your jobs…');
+  async function loadMyJobs(prefetch = false) {
+    if (!prefetch) showToast('Refreshing your jobs…');
     const list = document.getElementById('myJobsList');
-    if (list) renderSkeletonList?.(list, 2);
-    status?.('myJobsStatus','Loading…');
+    if (!prefetch && list) renderSkeletonList?.(list, 2);
+    if (!prefetch) status?.('myJobsStatus','Loading…');
     try {
       const headers = { "Content-Type": "application/json" };
       if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
       const res = await fetchWithAbort(`/api/jobs/mine?limit=50&offset=0`, { method:'GET', headers }, setMyJobsAC);
       const data = await res.json();
       const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+      
+      if (prefetch) return; // Don't render if prefetching
+      
       list.innerHTML = '';
       if (!jobs.length) {
         list.innerHTML = '<div class="placeholder">You have no jobs.</div>';
@@ -294,8 +391,10 @@
     } catch(e) {
       if (e.name === 'AbortError') return;
       console.error(e);
-      list.innerHTML = '<div class="placeholder">Failed to load your jobs.</div>';
-      status?.('myJobsStatus','Failed');
+      if (!prefetch) {
+        list.innerHTML = '<div class="placeholder">Failed to load your jobs.</div>';
+        status?.('myJobsStatus','Failed');
+      }
     }
   }
 
@@ -626,6 +725,9 @@
     document.getElementById("addCode").onclick = addCode;
     document.getElementById('saveCoverage').onclick = saveCoverage;
     
+    // Dark mode toggle
+    document.getElementById('darkModeToggle').onclick = DarkMode.toggleMode;
+    
     // Toggle bin
     q("#toggleBin").onclick = toggleBin;
     
@@ -639,9 +741,15 @@
       }
     })();
     
-    // Autoload when switching tabs
-    document.querySelectorAll('#nav a[data-nav="jobs"]')?.forEach(a => a.addEventListener('click', ()=>loadJobs()));
-    document.querySelectorAll('#nav a[data-nav="myjobs"]')?.forEach(a => a.addEventListener('click', ()=>loadMyJobs()));
+    // Autoload when switching tabs + prefetch on hover
+    document.querySelectorAll('#nav a[data-nav="jobs"]')?.forEach(a => {
+      a.addEventListener('click', ()=>loadJobs());
+      a.addEventListener('mouseenter', ()=>loadJobs(true)); // prefetch
+    });
+    document.querySelectorAll('#nav a[data-nav="myjobs"]')?.forEach(a => {
+      a.addEventListener('click', ()=>loadMyJobs());
+      a.addEventListener('mouseenter', ()=>loadMyJobs(true)); // prefetch
+    });
     
     if (saved) unlock();
   });
