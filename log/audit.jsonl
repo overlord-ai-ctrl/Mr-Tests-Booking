@@ -18,5 +18,20 @@
         "available": true
       }
     }
+  },
+  {
+    "timestamp": "2025-08-19T15:37:32.250Z",
+    "actor": "Admin",
+    "action": "coverage.set",
+    "target": "admin_tokens.json",
+    "beforeSha": null,
+    "afterSha": null,
+    "details": {
+      "beforeCentres": [],
+      "afterCentres": [
+        "london-wood-green",
+        "london-mill-hill"
+      ]
+    }
   }
 ]
