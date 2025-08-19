@@ -33,5 +33,19 @@
         "london-mill-hill"
       ]
     }
+  },
+  {
+    "timestamp": "2025-08-19T15:38:35.079Z",
+    "actor": "Admin",
+    "action": "centres.soft_delete",
+    "target": "test_centres.json",
+    "beforeSha": "b3eaf35526a31f988ab242844f656269466d23b9",
+    "afterSha": null,
+    "details": {
+      "ids": [
+        "london-wood-green"
+      ],
+      "removedFromBookers": 1
+    }
   }
 ]
