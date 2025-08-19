@@ -6,12 +6,5 @@
       "admins"
     ],
     "role": "master"
-  },
-  "2222": {
-    "name": "Chinese",
-    "pages": [
-      "centres"
-    ],
-    "role": "booker"
   }
 }
