@@ -79,6 +79,16 @@
       applyVisibility();
       showNav();
       status("authStatus", "Unlocked ✓", true);
+      
+      // Auto-open Jobs tab and load both lists
+      setTimeout(() => {
+        const jobsTab = document.querySelector('a[data-nav="jobs"]');
+        if (jobsTab) {
+          jobsTab.click();
+          loadJobs();
+          loadMyJobs();
+        }
+      }, 100);
     } catch (e) {
       console.error(e);
       status("authStatus", "Invalid code");
@@ -132,6 +142,96 @@
     a.download = "centres-coverage.csv";
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // Job row renderer
+  function renderJobRow(j, actions=[]) {
+    const row = document.createElement('div'); row.className='job-row';
+    const title = document.createElement('div'); title.className='title';
+    title.textContent = `${j.centre_name || j.centre_id} — ${j.candidate || ''}`;
+    const meta = document.createElement('div'); meta.className='meta';
+    meta.textContent = `ID:${j.id} · When:${j.when || ''} · Status:${j.status}`;
+    row.append(title, meta);
+    actions.forEach(btn => row.appendChild(btn));
+    return row;
+  }
+
+  // Jobs Board
+  async function loadJobs() {
+    status('jobsStatus','Loading…');
+    try {
+      const res = await api('/api/jobs/board','GET');
+      const list = document.getElementById('jobsList'); list.innerHTML='';
+      const jobs = res.jobs || [];
+      if (!jobs.length) { list.innerHTML='<div class="placeholder">No open jobs.</div>'; status('jobsStatus','Loaded',true); toggleJobCreate(); return; }
+      const q = (document.getElementById('jobsSearch').value||'').toLowerCase();
+      jobs.filter(j => (j.centre_name||'').toLowerCase().includes(q) || (j.candidate||'').toLowerCase().includes(q))
+          .forEach(j => {
+            const claim = document.createElement('button'); claim.textContent='Claim';
+            claim.onclick = () => claimJob(j.id);
+            const del = document.createElement('button'); del.textContent='Delete'; del.className='danger';
+            del.onclick = () => deleteJob(j.id);
+            const row = renderJobRow(j, isMaster()? [claim, del] : [claim]);
+            list.appendChild(row);
+          });
+      status('jobsStatus','Loaded',true);
+      toggleJobCreate();
+    } catch(e){ console.error(e); status('jobsStatus','Failed to load'); }
+  }
+
+  function toggleJobCreate(){
+    const el = document.getElementById('jobCreate');
+    if (el) el.hidden = !isMaster();
+  }
+
+  async function claimJob(id){
+    if(!confirm('Claim this job?')) return;
+    try { await api('/api/jobs/claim','POST',{ job_id:id }); loadJobs(); loadMyJobs(); }
+    catch(e){ alert('Failed to claim'); }
+  }
+
+  async function deleteJob(id){
+    if(!isMaster()) return;
+    if(!confirm('Delete this job?')) return;
+    try { await api('/api/jobs/delete','POST',{ job_id:id }); loadJobs(); }
+    catch(e){ alert('Failed to delete'); }
+  }
+
+  // My Jobs
+  async function loadMyJobs(){
+    status('myJobsStatus','Loading…');
+    try{
+      const res = await api('/api/jobs/mine','GET');
+      const list = document.getElementById('myJobsList'); list.innerHTML='';
+      const jobs = res.jobs || [];
+      if(!jobs.length){ list.innerHTML='<div class="placeholder">You have no jobs.</div>'; status('myJobsStatus','Loaded',true); document.getElementById('earnings').textContent=''; return; }
+      jobs.forEach(j=>{
+        const actions=[];
+        if(j.status==='claimed'){
+          const complete=document.createElement('button'); complete.textContent='Mark completed';
+          complete.onclick=()=>completeJob(j.id);
+          const release=document.createElement('button'); release.textContent='Release';
+          release.onclick=()=>releaseJob(j.id);
+          actions.push(complete, release);
+        }
+        const row = renderJobRow(j, actions);
+        list.appendChild(row);
+      });
+      document.getElementById('earnings').textContent = `£${res.total_due || 0} due (£${res.payout_per_job || 70} per completed)`;
+      status('myJobsStatus','Loaded',true);
+    }catch(e){ console.error(e); status('myJobsStatus','Failed'); }
+  }
+
+  async function completeJob(id){
+    if(!confirm('Mark as completed?')) return;
+    try{ await api('/api/jobs/complete','POST',{ job_id:id }); loadMyJobs(); }
+    catch(e){ alert('Failed to complete'); }
+  }
+  
+  async function releaseJob(id){
+    if(!confirm('Release this job?')) return;
+    try{ await api('/api/jobs/release','POST',{ job_id:id }); loadMyJobs(); loadJobs(); }
+    catch(e){ alert('Failed to release'); }
   }
 
   async function loadCentres() {
@@ -400,6 +500,34 @@
     q("#selectAll").onclick = selectAllVisible;
     q("#selectNone").onclick = selectNone;
     q("#exportCsv").onclick = exportCsv;
+    
+    // Jobs Board event handlers
+    document.getElementById('loadJobs').onclick = loadJobs;
+    document.getElementById('jobsSearch').oninput = loadJobs;
+    document.getElementById('createJob').onclick = async ()=>{
+      const payload = {
+        centre_id: document.getElementById('jobCentreId').value.trim(),
+        centre_name: document.getElementById('jobCentreName').value.trim(),
+        when: document.getElementById('jobWhen').value.trim(),
+        candidate: document.getElementById('jobCandidate').value.trim(),
+        notes: document.getElementById('jobNotes').value.trim()
+      };
+      if(!payload.centre_id || !payload.centre_name) return status('createJobStatus','Centre required');
+      status('createJobStatus','Creating…');
+      try { 
+        await api('/api/jobs/create','POST',{ job: payload }); 
+        status('createJobStatus','Created ✓',true);
+        document.getElementById('jobCentreId').value=''; 
+        document.getElementById('jobCentreName').value='';
+        document.getElementById('jobWhen').value=''; 
+        document.getElementById('jobCandidate').value=''; 
+        document.getElementById('jobNotes').value='';
+        loadJobs();
+      } catch(e){ status('createJobStatus','Failed'); }
+    };
+    
+    // My Jobs event handlers
+    document.getElementById('loadMyJobs').onclick = loadMyJobs;
     
     if (saved) unlock();
     

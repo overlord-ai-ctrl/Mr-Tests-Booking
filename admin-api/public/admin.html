@@ -34,6 +34,8 @@
       <a href="#" data-nav="bin">Recycle Bin</a>
       <a href="#" data-nav="profile">Profile</a>
       <a href="#" data-nav="admins">Admin Codes</a>
+      <a href="#" data-nav="jobs">Jobs Board</a>
+      <a href="#" data-nav="myjobs">My Jobs</a>
     </nav>
 
     <section class="panel" data-page="centres">
@@ -120,6 +122,42 @@
         <input id="newPages" type="text" placeholder='Pages (comma separated, e.g. centres,affiliates)'/>
         <button id="addCode">Add code</button>
         <span id="addCodeStatus" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="panel" data-page="jobs" hidden>
+      <h2>Jobs Board</h2>
+      <div class="row">
+        <button id="loadJobs">Load jobs</button>
+        <input id="jobsSearch" type="text" placeholder="Search centre or candidate">
+        <span id="jobsStatus" class="muted"></span>
+      </div>
+      <div id="jobsList" class="list"><div class="placeholder">Open jobs will appear here…</div></div>
+
+      <!-- Master-only job creator -->
+      <div id="jobCreate" class="panel" hidden>
+        <h3>Create job (master)</h3>
+        <div class="row">
+          <input id="jobCentreId" placeholder="centre id">
+          <input id="jobCentreName" placeholder="centre name">
+          <input id="jobWhen" placeholder="date/time e.g. 2025-08-20 10:30">
+          <input id="jobCandidate" placeholder="candidate name">
+          <input id="jobNotes" placeholder="notes">
+          <button id="createJob">Create job</button>
+          <span id="createJobStatus" class="muted"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-page="myjobs" hidden>
+      <h2>My Jobs</h2>
+      <div class="row">
+        <button id="loadMyJobs">Load my jobs</button>
+        <span id="myJobsStatus" class="muted"></span>
+      </div>
+      <div id="myJobsList" class="list"><div class="placeholder">Your jobs will appear here…</div></div>
+      <div class="row">
+        <span id="earnings" class="muted"></span>
       </div>
     </section>
   </main>
