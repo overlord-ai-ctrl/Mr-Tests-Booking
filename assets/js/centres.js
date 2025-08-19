@@ -7,12 +7,14 @@
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error('Failed to load');
     const centres = await res.json();
+    // Filter out deleted centres
+    const activeCentres = centres.filter(c => !c.deleted);
     // parse any preset selection from URL (?preferredTestCentres=a,b,c)
     const params = new URLSearchParams(window.location.search);
     const preset = new Set((params.get('preferredTestCentres') || '')
       .split(',').map(s => s.trim()).filter(Boolean));
     container.innerHTML = '';
-    centres.forEach(c => {
+    activeCentres.forEach(c => {
       const label = document.createElement('label');
       const input = document.createElement('input');
       input.type = 'checkbox';
@@ -23,7 +25,7 @@
       label.appendChild(document.createTextNode(' ' + c.name));
       container.appendChild(label);
     });
-    if (!centres.length) {
+    if (!activeCentres.length) {
       container.innerHTML = '<p>No centres available right now.</p>';
     }
   } catch (e) {
