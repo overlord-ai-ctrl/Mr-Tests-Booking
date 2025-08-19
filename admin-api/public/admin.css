@@ -196,3 +196,54 @@ textarea { padding:10px 12px; border:1px solid #ccc; border-radius:6px; min-widt
 .job-row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid #eee; }
 .job-row .title { font-weight:600; }
 .job-row .meta { font-size:12px; color:#555; }
+
+/* --- Jobs (NiceAdmin tasks look) --- */
+.job-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #e9eef5;
+  border-radius: 12px;
+  box-shadow: 0 6px 14px rgba(1,41,112,.05);
+  margin-bottom: 10px;
+}
+.job-title {
+  font-weight: 700;
+  color: #012970;
+}
+.job-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+.job-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.badge-open { background: #eef2ff; color: #4154f1; border: 1px solid #dfe6ff; }
+.badge-claimed { background: #fff7e6; color: #b58105; border: 1px solid #ffe6b3; }
+.badge-completed { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+
+/* Compact buttons */
+.btn-slim { padding: 6px 10px; border-radius: 8px; font-weight: 600; }
+
+/* Success pulse for "Claim/Complete" */
+@keyframes successPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(65,84,241,.6); }
+  70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(65,84,241,0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(65,84,241,0); }
+}
+.pulse-success { animation: successPulse 900ms ease-out 1; }
+
+/* Skeleton line */
+.skel {
+  height: 12px;
+  width: 100%;
+  border-radius: 8px;
+  background: linear-gradient(90deg,#eef1f6 25%,#f7f9fc 37%,#eef1f6 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+@keyframes shimmer { 0%{background-position: 100% 0} 100%{background-position: 0 0} }

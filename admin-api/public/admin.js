@@ -119,94 +119,132 @@
     }
   }
 
-  // Job row renderer
-  function renderJobRow(j, actions=[]) {
-    const row = document.createElement('div'); row.className='job-row';
-    const title = document.createElement('div'); title.className='title';
-    title.textContent = `${j.centre_name || j.centre_id} — ${j.candidate || ''}`;
-    const meta = document.createElement('div'); meta.className='meta';
-    meta.textContent = `ID:${j.id} · When:${j.when || ''} · Status:${j.status}`;
-    row.append(title, meta);
-    actions.forEach(btn => row.appendChild(btn));
-    return row;
+  // Utility: status badge
+  function statusBadge(st) {
+    const s = String(st||'').toLowerCase();
+    const span = document.createElement('span');
+    span.className = 'badge';
+    if (s === 'completed') { span.classList.add('badge-completed'); span.textContent = 'Completed'; }
+    else if (s === 'claimed') { span.classList.add('badge-claimed'); span.textContent = 'Claimed'; }
+    else { span.classList.add('badge-open'); span.textContent = 'Open'; }
+    return span;
   }
 
-  // Jobs Board
+  // Utility: build a job card
+  function renderJobCard(j, actions=[]) {
+    const card = document.createElement('div'); card.className = 'job-card';
+    const title = document.createElement('div'); title.className = 'job-title';
+    title.textContent = `${j.centre_name || j.centre_id || '—'} — ${j.candidate || ''}`;
+    const meta = document.createElement('div'); meta.className = 'job-meta';
+    const when = j.when ? `· ${j.when}` : '';
+    meta.textContent = `ID:${j.id} ${when}`;
+    const right = document.createElement('div'); right.className = 'job-actions';
+    right.append(statusBadge(j.status));
+    actions.forEach(a => right.appendChild(a));
+    card.append(title, right, meta);
+    return card;
+  }
+
+  // Small helper: success pulse on a button or card
+  function pulse(el) { if (!el) return; el.classList.add('pulse-success'); setTimeout(()=>el.classList.remove('pulse-success'), 1000); }
+
+  // Show tiny skeletons while loading
+  function renderSkeletonList(container, rows=3) {
+    container.innerHTML = '';
+    for (let i=0;i<rows;i++){
+      const c = document.createElement('div'); c.className='job-card';
+      const s1=document.createElement('div'); s1.className='skel'; s1.style.width='40%';
+      const s2=document.createElement('div'); s2.className='skel'; s2.style.width='25%';
+      c.append(s1, document.createElement('div'), s2);
+      container.appendChild(c);
+    }
+  }
+
+  // BUTTON FACTORIES
+  function btn(label, variant='primary') {
+    const b=document.createElement('button'); b.className=`btn btn-slim btn-${variant}`; b.textContent=label; return b;
+  }
+
+  // JOBS BOARD
   async function loadJobs() {
+    const list = document.getElementById('jobsList');
+    const q = (document.getElementById('jobsSearch')?.value || '').toLowerCase();
+    if (list) renderSkeletonList(list, 3);
     status('jobsStatus','Loading…');
     try {
       const res = await api('/api/jobs/board','GET');
-      const list = document.getElementById('jobsList'); list.innerHTML='';
-      const jobs = res.jobs || [];
-      if (!jobs.length) { list.innerHTML='<div class="placeholder">No open jobs.</div>'; status('jobsStatus','Loaded',true); toggleJobCreate(); return; }
-      const q = (document.getElementById('jobsSearch').value||'').toLowerCase();
-      jobs.filter(j => (j.centre_name||'').toLowerCase().includes(q) || (j.candidate||'').toLowerCase().includes(q))
-          .forEach(j => {
-            const claim = document.createElement('button'); claim.textContent='Claim';
-            claim.onclick = () => claimJob(j.id);
-            const del = document.createElement('button'); del.textContent='Delete'; del.className='danger';
-            del.onclick = () => deleteJob(j.id);
-            const row = renderJobRow(j, isMaster()? [claim, del] : [claim]);
-            list.appendChild(row);
-          });
+      const jobs = Array.isArray(res.jobs) ? res.jobs : [];
+      list.innerHTML = '';
+      const filtered = q ? jobs.filter(j => (j.centre_name||'').toLowerCase().includes(q) || (j.candidate||'').toLowerCase().includes(q)) : jobs;
+      if (!filtered.length) {
+        list.innerHTML = '<div class="placeholder">No open jobs.</div>';
+        status('jobsStatus','Loaded',true); return;
+      }
+      filtered.forEach(j=>{
+        const claim = btn('Claim','success');
+        claim.onclick = async () => {
+          try { await api('/api/jobs/claim','POST',{ job_id:j.id }); pulse(claim); loadJobs(); loadMyJobs(); }
+          catch(e){ alert('Failed to claim'); }
+        };
+        const del = btn('Delete','outline-danger');
+        del.onclick = async () => {
+          if (!isMaster()) return;
+          if (!confirm('Delete this job?')) return;
+          try { await api('/api/jobs/delete','POST',{ job_id:j.id }); loadJobs(); }
+          catch(e){ alert('Failed to delete'); }
+        };
+        const actions = isMaster() ? [claim, del] : [claim];
+        list.appendChild(renderJobCard(j, actions));
+      });
       status('jobsStatus','Loaded',true);
-      toggleJobCreate();
-    } catch(e){ console.error(e); status('jobsStatus','Failed to load'); }
+    } catch(e) {
+      console.error(e);
+      list.innerHTML = '<div class="placeholder">Failed to load jobs.</div>';
+      status('jobsStatus','Failed');
+    }
   }
 
-  function toggleJobCreate(){
-    const el = document.getElementById('jobCreate');
-    if (el) el.hidden = !isMaster();
-  }
-
-  async function claimJob(id){
-    if(!confirm('Claim this job?')) return;
-    try { await api('/api/jobs/claim','POST',{ job_id:id }); loadJobs(); loadMyJobs(); }
-    catch(e){ alert('Failed to claim'); }
-  }
-
-  async function deleteJob(id){
-    if(!isMaster()) return;
-    if(!confirm('Delete this job?')) return;
-    try { await api('/api/jobs/delete','POST',{ job_id:id }); loadJobs(); }
-    catch(e){ alert('Failed to delete'); }
-  }
-
-  // My Jobs
-  async function loadMyJobs(){
+  // MY JOBS
+  async function loadMyJobs() {
+    const list = document.getElementById('myJobsList');
+    if (list) renderSkeletonList(list, 2);
     status('myJobsStatus','Loading…');
-    try{
+    try {
       const res = await api('/api/jobs/mine','GET');
-      const list = document.getElementById('myJobsList'); list.innerHTML='';
-      const jobs = res.jobs || [];
-      if(!jobs.length){ list.innerHTML='<div class="placeholder">You have no jobs.</div>'; status('myJobsStatus','Loaded',true); document.getElementById('earnings').textContent=''; return; }
+      const jobs = Array.isArray(res.jobs) ? res.jobs : [];
+      list.innerHTML = '';
+      if (!jobs.length) {
+        list.innerHTML = '<div class="placeholder">You have no jobs.</div>';
+        document.getElementById('earnings').textContent = '';
+        status('myJobsStatus','Loaded',true); return;
+      }
       jobs.forEach(j=>{
         const actions=[];
-        if(j.status==='claimed'){
-          const complete=document.createElement('button'); complete.textContent='Mark completed';
-          complete.onclick=()=>completeJob(j.id);
-          const release=document.createElement('button'); release.textContent='Release';
-          release.onclick=()=>releaseJob(j.id);
+        if (String(j.status).toLowerCase()==='claimed') {
+          const complete = btn('Complete','success');
+          complete.onclick = async () => {
+            try { await api('/api/jobs/complete','POST',{ job_id:j.id }); pulse(complete); loadMyJobs(); }
+            catch(e){ alert('Failed to complete'); }
+          };
+          const release = btn('Release','secondary');
+          release.onclick = async () => {
+            if(!confirm('Release this job?')) return;
+            try { await api('/api/jobs/release','POST',{ job_id:j.id }); loadMyJobs(); loadJobs(); }
+            catch(e){ alert('Failed to release'); }
+          };
           actions.push(complete, release);
         }
-        const row = renderJobRow(j, actions);
-        list.appendChild(row);
+        list.appendChild(renderJobCard(j, actions));
       });
-      document.getElementById('earnings').textContent = `£${res.total_due || 0} due (£${res.payout_per_job || 70} per completed)`;
+      const per = res.payout_per_job || 70;
+      const due = res.total_due || 0;
+      document.getElementById('earnings').textContent = `£${due} due (£${per} per completed)`;
       status('myJobsStatus','Loaded',true);
-    }catch(e){ console.error(e); status('myJobsStatus','Failed'); }
-  }
-
-  async function completeJob(id){
-    if(!confirm('Mark as completed?')) return;
-    try{ await api('/api/jobs/complete','POST',{ job_id:id }); loadMyJobs(); }
-    catch(e){ alert('Failed to complete'); }
-  }
-  
-  async function releaseJob(id){
-    if(!confirm('Release this job?')) return;
-    try{ await api('/api/jobs/release','POST',{ job_id:id }); loadMyJobs(); loadJobs(); }
-    catch(e){ alert('Failed to release'); }
+    } catch(e) {
+      console.error(e);
+      list.innerHTML = '<div class="placeholder">Failed to load your jobs.</div>';
+      status('myJobsStatus','Failed');
+    }
   }
 
   async function loadCentres() {
@@ -540,28 +578,11 @@
     q("#toggleBin").onclick = toggleBin;
     
     // Jobs Board event handlers
-    document.getElementById('jobsSearch').oninput = loadJobs;
-    document.getElementById('createJob').onclick = async ()=>{
-      const payload = {
-        centre_id: document.getElementById('jobCentreId').value.trim(),
-        centre_name: document.getElementById('jobCentreName').value.trim(),
-        when: document.getElementById('jobWhen').value.trim(),
-        candidate: document.getElementById('jobCandidate').value.trim(),
-        notes: document.getElementById('jobNotes').value.trim()
-      };
-      if(!payload.centre_id || !payload.centre_name) return status('createJobStatus','Centre required');
-      status('createJobStatus','Creating…');
-      try { 
-        await api('/api/jobs/create','POST',{ job: payload }); 
-        status('createJobStatus','Created ✓',true);
-        document.getElementById('jobCentreId').value=''; 
-        document.getElementById('jobCentreName').value='';
-        document.getElementById('jobWhen').value=''; 
-        document.getElementById('jobCandidate').value=''; 
-        document.getElementById('jobNotes').value='';
-        loadJobs();
-      } catch(e){ status('createJobStatus','Failed'); }
-    };
+    document.getElementById('jobsSearch')?.addEventListener('input', ()=>loadJobs());
+    
+    // Autoload when switching tabs
+    document.querySelectorAll('#nav a[data-nav="jobs"]')?.forEach(a => a.addEventListener('click', ()=>loadJobs()));
+    document.querySelectorAll('#nav a[data-nav="myjobs"]')?.forEach(a => a.addEventListener('click', ()=>loadMyJobs()));
     
     if (saved) unlock();
   });

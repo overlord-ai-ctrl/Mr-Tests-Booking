@@ -150,53 +150,33 @@
       </section>
 
       <section class="panel card p-3 p-md-4 mb-3" data-page="jobs" hidden>
-        <h2>Jobs Board</h2>
-        <div class="row g-2 align-items-center mb-2">
-          <div class="col-auto">
-            <input id="jobsSearch" type="text" placeholder="Search centre or candidate" class="form-control">
-          </div>
-          <div class="col-auto">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h2 class="h5 mb-0">Jobs Board</h2>
+          <div class="text-end">
             <span id="jobsStatus" class="form-text"></span>
           </div>
         </div>
-        <div id="jobsList" class="list"><div class="placeholder">Open jobs will appear here…</div></div>
-
-        <!-- Master-only job creator -->
-        <div id="jobCreate" class="panel" hidden>
-          <h3>Create job (master)</h3>
-          <div class="row g-2 align-items-center mb-2">
-            <div class="col-auto">
-              <input id="jobCentreId" placeholder="centre id" class="form-control">
-            </div>
-            <div class="col-auto">
-              <input id="jobCentreName" placeholder="centre name" class="form-control">
-            </div>
-            <div class="col-auto">
-              <input id="jobWhen" placeholder="date/time e.g. 2025-08-20 10:30" class="form-control">
-            </div>
-            <div class="col-auto">
-              <input id="jobCandidate" placeholder="candidate name" class="form-control">
-            </div>
-            <div class="col-auto">
-              <input id="jobNotes" placeholder="notes" class="form-control">
-            </div>
-            <div class="col-auto">
-              <button id="createJob" class="btn btn-primary">Create job</button>
-            </div>
-            <div class="col-auto">
-              <span id="createJobStatus" class="form-text"></span>
-            </div>
+        <div class="row g-2 align-items-center mb-2">
+          <div class="col-auto">
+            <input id="jobsSearch" class="form-control" type="text" placeholder="Search centre or candidate">
+          </div>
+          <div class="col-auto" id="jobCreate" hidden>
+            <!-- master-only quick create (leave IDs if you already have fields; otherwise keep as-is) -->
+            <button id="createJob" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Create job</button>
+            <span id="createJobStatus" class="form-text"></span>
           </div>
         </div>
+        <div id="jobsList" class="list"></div>
       </section>
 
       <section class="panel card p-3 p-md-4 mb-3" data-page="myjobs" hidden>
-        <h2>My Jobs</h2>
-        <div id="myJobsList" class="list"><div class="placeholder">Your jobs will appear here…</div></div>
-        <div class="row g-2 align-items-center mb-2">
-          <div class="col-auto">
-            <span id="earnings" class="form-text"></span>
-          </div>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h2 class="h5 mb-0">My Jobs</h2>
+          <span id="myJobsStatus" class="form-text"></span>
+        </div>
+        <div id="myJobsList" class="list"></div>
+        <div class="mt-2">
+          <span id="earnings" class="fw-semibold"></span>
         </div>
       </section>
     </main>
