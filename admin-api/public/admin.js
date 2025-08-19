@@ -36,7 +36,8 @@
       q("#userRole").textContent = `(${ME.role || 'booker'})`;
       q("#userBox").hidden = false; 
     }
-    const pages = ME?.pages || ["*"]; const all = pages.includes("*");
+    const pages = ME?.pages || [];
+    const all = pages.includes("*");
     document.querySelectorAll("[data-page]").forEach(sec => {
       const tag = sec.getAttribute("data-page") || "";
       sec.hidden = !all && !pages.includes(tag);
@@ -85,6 +86,7 @@
       loadCentres();
       if (isMaster()) loadBin();
       loadProfile();
+      loadProfileCentres();
       loadProfileStats();
       if (typeof loadCodes === 'function' && isMaster()) loadCodes();
       if (typeof loadJobs === 'function') loadJobs();
@@ -95,6 +97,16 @@
       TOKEN = ""; ME = null;
       q("#app").hidden = true; q("#authGate").hidden = false;
     }
+  }
+
+  // Utility for small icon button
+  function iconButton(iconClass, title, onClick, extraClass='') {
+    const b = document.createElement('button');
+    b.className = `icon-btn ${extraClass}`.trim();
+    b.title = title || '';
+    b.innerHTML = `<i class="bi ${iconClass}"></i>`;
+    b.onclick = onClick;
+    return b;
   }
 
   // Toggle bin panel
@@ -206,20 +218,26 @@
       const box = q("#centresBox"); box.innerHTML = "";
       if (!centres.length) { box.innerHTML = '<div class="placeholder">No centres yet.</div>'; status("status","Loaded",true); return; }
       centres.forEach(c => {
-        const row = document.createElement("div"); row.className="row";
-        const name = document.createElement("div"); name.textContent = c.name;
-        const id = document.createElement("span"); id.className = "badge"; id.textContent = c.id;
-        row.append(name, id);
-        
-        // Add delete button for masters
+        const row = document.createElement('div');
+        row.className = 'row inline';
+        const left = document.createElement('div');
+        left.className = 'd-flex align-items-center gap-2';
+
+        const nameEl = document.createElement('div');
+        nameEl.textContent = c.name;
+
+        const idBadge = document.createElement('span');
+        idBadge.className = 'badge text-bg-light';
+        idBadge.textContent = c.id;
+
+        left.append(nameEl, idBadge);
+
+        const right = document.createElement('div');
+        right.className = 'd-flex align-items-center gap-2';
         if (isMaster()) {
-          const del = document.createElement('button');
-          del.textContent = 'Delete';
-          del.className = 'danger';
-          del.onclick = () => deleteCentre(c.id);
-          row.appendChild(del);
+          right.append(iconButton('bi-trash', 'Delete centre', () => deleteCentre(c.id), 'text-danger'));
         }
-        
+        row.append(left, right);
         box.appendChild(row);
       });
       status("status","Loaded",true);
@@ -261,12 +279,24 @@
       const selected = new Set((mine?.centres)||[]);
       box.innerHTML = '';
       centres.forEach(c => {
-        const row = document.createElement('div'); row.className='row';
-        const input = document.createElement('input'); input.type='checkbox'; input.value=c.id;
-        input.name='myCoverage[]'; input.id=`cov-${c.id}`; if (selected.has(c.id)) input.checked = true;
-        const label = document.createElement('label'); label.htmlFor=`cov-${c.id}`; label.textContent = ` ${c.name} `;
-        const tag = document.createElement('span'); tag.className='badge'; tag.textContent=c.id;
-        row.append(input,label,tag);
+        const row = document.createElement('div');
+        row.className = 'coverage-row';
+        const left = document.createElement('div'); 
+        left.className = 'coverage-name'; 
+        left.textContent = c.name;
+        const right = document.createElement('div'); 
+        right.className = 'coverage-right';
+        const chk = document.createElement('input'); 
+        chk.type = 'checkbox'; 
+        chk.name = 'myCoverage[]'; 
+        chk.value = c.id; 
+        chk.id = `cov-${c.id}`;
+        if (selected.has(c.id)) chk.checked = true;
+        const idBadge = document.createElement('span'); 
+        idBadge.className = 'badge text-bg-light'; 
+        idBadge.textContent = c.id;
+        right.append(idBadge, chk);
+        row.append(left, right);
         box.appendChild(row);
       });
     } catch (e) {
@@ -292,20 +322,19 @@
     status("appendStatus","Saving…");
     try {
       await api("/api/test-centres","PUT",{ mode:"append", centres:[{ id, name }] });
-      const row = document.createElement("div"); row.className="row";
+      const row = document.createElement("div"); row.className="row inline";
+      const left = document.createElement("div"); left.className="d-flex align-items-center gap-2";
       const nameDiv = document.createElement("div"); nameDiv.textContent = name;
-      const idSpan = document.createElement("span"); idSpan.className="badge"; idSpan.textContent = id;
-      row.append(nameDiv, idSpan);
+      const idSpan = document.createElement("span"); idSpan.className="badge text-bg-light"; idSpan.textContent = id;
+      left.append(nameDiv, idSpan);
       
-      // Add delete button for masters
+      const right = document.createElement('div');
+      right.className = 'd-flex align-items-center gap-2';
       if (isMaster()) {
-        const del = document.createElement('button');
-        del.textContent = 'Delete';
-        del.className = 'danger';
-        del.onclick = () => deleteCentre(id);
-        row.appendChild(del);
+        right.append(iconButton('bi-trash', 'Delete centre', () => deleteCentre(id), 'text-danger'));
       }
       
+      row.append(left, right);
       q("#centresBox").appendChild(row);
       nameEl.value=""; status("appendStatus","Appended & committed ✓", true);
       loadCentres(); // reload to reflect
@@ -319,17 +348,24 @@
       const data = await api("/api/test-centres-bin", "GET");
       const centres = data.centres || [];
       currentBinSha = data.sha;
-      const box = q("#binBox"); box.innerHTML = "";
-      if (!centres.length) { box.innerHTML = '<div class="placeholder">No deleted centres.</div>'; status("binStatus","Loaded",true); return; }
+      const list = document.getElementById('binList'); list.innerHTML = "";
+      if (!centres.length) { list.innerHTML = '<div class="placeholder">No deleted centres.</div>'; status("binStatus","Loaded",true); return; }
       centres.forEach(c => {
-        const row = document.createElement("div"); row.className="row";
-        const name = document.createElement("div"); name.textContent = c.name;
-        const id = document.createElement("span"); id.className = "badge"; id.textContent = c.id;
-        const restore = document.createElement('button');
-        restore.textContent = 'Restore';
-        restore.onclick = () => restoreCentre(c.id);
-        row.append(name, id, restore);
-        box.appendChild(row);
+        const row = document.createElement('div'); 
+        row.className = 'row inline';
+        const left = document.createElement('div'); 
+        left.className = 'd-flex align-items-center gap-2';
+        const nameEl = document.createElement('div'); 
+        nameEl.textContent = c.name;
+        const idBadge = document.createElement('span'); 
+        idBadge.className = 'badge text-bg-light'; 
+        idBadge.textContent = c.id;
+        left.append(nameEl, idBadge);
+        const right = document.createElement('div'); 
+        right.className = 'd-flex align-items-center gap-2';
+        right.append(iconButton('bi-arrow-counterclockwise', 'Restore centre', () => restoreCentre(c.id), 'text-success'));
+        row.append(left, right);
+        list.appendChild(row);
       });
       status("binStatus","Loaded",true);
     } catch (e) { console.error(e); status("binStatus","Failed to load"); }
@@ -341,8 +377,8 @@
     try {
       await api('/api/test-centres','PUT',{ mode:'restore', ids:[id], sha: currentBinSha });
       // remove from bin UI
-      const box = document.getElementById('binBox');
-      [...box.querySelectorAll('.row')].forEach(row => {
+      const list = document.getElementById('binList');
+      [...list.querySelectorAll('.row')].forEach(row => {
         if (row.querySelector('.badge')?.textContent === id) row.remove();
       });
       status('binStatus','Restored ✓',true);
@@ -359,17 +395,56 @@
   // Profile functionality
   async function loadProfile() {
     try {
-      const profile = await api('/api/my-profile','GET');
-      q("#profileNotes").value = profile.notes || "";
-      q("#profileMaxDaily").value = profile.maxDaily || 0;
-      q("#profileAvailable").checked = profile.available !== false;
-      
-      // Set header info
-      q("#profileName").textContent = ME?.name || "—";
-      q("#profileRole").textContent = ME?.role || (isMaster() ? 'master' : 'booker');
+      const prof = await api('/api/my-profile','GET').catch(()=>({}));
+      // availability pill UI (green/red)
+      const available = !!prof.available;
+      const pill = document.querySelector('#profileAvailablePill');
+      if (!pill) {
+        const cont = document.querySelector('.profile-sub');
+        const pillEl = document.createElement('span');
+        pillEl.id = 'profileAvailablePill';
+        pillEl.className = 'av-pill ' + (available ? 'av-on' : 'av-off');
+        pillEl.textContent = available ? 'Available' : 'Unavailable';
+        cont?.appendChild(pillEl);
+      } else {
+        pill.className = 'av-pill ' + (available ? 'av-on' : 'av-off');
+        pill.textContent = available ? 'Available' : 'Unavailable';
+      }
+      // Set checkbox (kept for Save)
+      const chk = document.getElementById('profileAvailable'); if (chk) chk.checked = available;
+
+      // Name/role from ME
+      document.getElementById('profileName').textContent = ME?.name || 'Admin';
+      document.getElementById('profileRole').textContent = (ME?.role) || (isMaster()? 'master':'booker');
+
+      // Notes
+      const notes = document.getElementById('profileNotes');
+      if (notes) notes.value = prof.notes || '';
     } catch (e) {
       console.error(e);
       status("profileStatus", "Failed to load profile");
+    }
+  }
+
+  async function loadProfileCentres(){
+    try{
+      const mine = await api('/api/my-centres','GET');
+      const ids = new Set(mine?.centres || []);
+      const res = await api('/api/test-centres','GET');
+      const centres = res?.centres || [];
+      const ul = document.getElementById('profileCentres');
+      if (!ul) return;
+      ul.innerHTML = '';
+      centres.forEach(c => { if (ids.has(c.id)) {
+        const li = document.createElement('li');
+        li.textContent = c.name + ' ';
+        const b = document.createElement('span'); b.className='badge text-bg-light'; b.textContent=c.id;
+        li.appendChild(b);
+        ul.appendChild(li);
+      }});
+    }catch(e){
+      const ul = document.getElementById('profileCentres');
+      if (ul) ul.innerHTML = '<li class="placeholder">Could not load preferred centres.</li>';
     }
   }
 
@@ -384,38 +459,31 @@
   }
 
   async function saveMyProfile() {
-    const notes = q("#profileNotes").value.trim();
-    const maxDaily = parseInt(q("#profileMaxDaily").value) || 0;
-    const available = q("#profileAvailable").checked;
-    
-    if (maxDaily < 0) return status("profileStatus", "Max daily must be >= 0");
-    
-    status("profileStatus", "Saving…");
-    try {
-      await api('/api/my-profile','PUT',{ notes, maxDaily, available });
-      status("profileStatus", "Saved ✓", true);
-    } catch (e) { 
-      console.error(e); 
-      status("profileStatus", "Failed to save"); 
-    }
+    const body = {
+      notes: (document.getElementById('profileNotes')?.value || '').trim(),
+      available: !!document.getElementById('profileAvailable')?.checked
+    };
+    await api('/api/my-profile','PUT', body);
+    // update pill visual
+    const available = body.available;
+    const pill = document.getElementById('profileAvailablePill');
+    if (pill) { pill.className = 'av-pill ' + (available? 'av-on' : 'av-off'); pill.textContent = available ? 'Available' : 'Unavailable'; }
+    status("profileStatus", "Saved ✓", true);
   }
 
   function renderCodesList(map) {
-    const list = document.getElementById('codesList');
-    list.innerHTML = '';
+    const list = document.getElementById('codesList'); list.innerHTML='';
     const entries = Object.entries(map);
     if (!entries.length) { list.innerHTML = '<div class="placeholder">No codes yet.</div>'; return; }
-    entries.forEach(([code, info]) => {
-      const row = document.createElement('div'); row.className='row';
-      const name = document.createElement('div'); name.textContent = (info?.name || 'Admin');
-      const codeBadge = document.createElement('span'); codeBadge.className='badge'; codeBadge.textContent = code;
-      const pagesBadge = document.createElement('span'); pagesBadge.className='badge'; pagesBadge.textContent = (info?.pages||[]).join(',');
-      const roleBadge = document.createElement('span'); roleBadge.className='badge'; roleBadge.textContent = info?.role || ((info?.pages||[]).includes('*') ? 'master' : 'booker');
-      row.append(name, codeBadge, pagesBadge, roleBadge);
+    entries.forEach(([code, info])=>{
+      const row = document.createElement('div'); row.className = 'code-row';
+      const name = document.createElement('div'); name.textContent = info?.name || 'Admin';
+      const codeBadge = document.createElement('span'); codeBadge.className='badge text-bg-light'; codeBadge.textContent=code;
+      const roleBadge = document.createElement('span'); roleBadge.className='badge text-bg-primary'; roleBadge.textContent = info?.role || ((info?.pages||[]).includes('*') ? 'master' : 'booker');
+      const spacer = document.createElement('div'); spacer.className='spacer';
+      row.append(name, codeBadge, roleBadge, spacer);
       if (isMaster()) {
-        const del = document.createElement('button'); del.textContent = 'Delete'; del.className='danger';
-        del.onclick = () => deleteAdminCode(code);
-        row.append(del);
+        row.append(iconButton('bi-trash', 'Delete admin', ()=>deleteAdminCode(code), 'text-danger'));
       }
       list.appendChild(row);
     });
