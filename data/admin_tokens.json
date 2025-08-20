@@ -26,7 +26,11 @@
     "pages": [
       "centres"
     ],
-    "role": "booker"
+    "role": "booker",
+    "centres": [
+      "london-mill-hill",
+      "slough"
+    ]
   },
   "2222": {
     "name": "Preston",
