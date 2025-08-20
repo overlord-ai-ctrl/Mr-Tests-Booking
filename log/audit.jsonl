@@ -90,5 +90,20 @@
       "name": "Rayhanna",
       "role": "booker"
     }
+  },
+  {
+    "timestamp": "2025-08-20T18:20:22.434Z",
+    "actor": "Rayhanna",
+    "action": "coverage.set",
+    "target": "admin_tokens.json",
+    "beforeSha": null,
+    "afterSha": null,
+    "details": {
+      "beforeCentres": [],
+      "afterCentres": [
+        "london-mill-hill",
+        "slough"
+      ]
+    }
   }
 ]
