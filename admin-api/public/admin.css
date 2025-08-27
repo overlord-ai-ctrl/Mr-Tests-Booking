@@ -1136,3 +1136,10 @@ body.dark .assign-wrap {
 body.dark .booker-section h6 {
   color: #e2e8f0;
 }
+
+/* Logo styling */
+.admin-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
