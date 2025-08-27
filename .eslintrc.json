@@ -1,17 +1,39 @@
 {
   "env": {
-    "es2022": true,
     "node": true,
+    "es2021": true,
     "browser": true
   },
-  "extends": ["eslint:recommended"],
+  "extends": ["eslint:recommended", "prettier"],
   "parserOptions": {
-    "ecmaVersion": "latest",
+    "ecmaVersion": 12,
     "sourceType": "module"
   },
   "rules": {
-    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-unused-vars": "warn",
+    "no-undef": "error",
     "no-console": "off",
     "prefer-const": "warn"
+  },
+  "globals": {
+    "process": "readonly",
+    "Buffer": "readonly",
+    "__dirname": "readonly",
+    "__filename": "readonly",
+    "global": "readonly",
+    "window": "readonly",
+    "document": "readonly",
+    "localStorage": "readonly",
+    "sessionStorage": "readonly",
+    "fetch": "readonly",
+    "AbortController": "readonly",
+    "alert": "readonly",
+    "confirm": "readonly",
+    "setTimeout": "readonly",
+    "clearTimeout": "readonly",
+    "setInterval": "readonly",
+    "clearInterval": "readonly",
+    "URL": "readonly",
+    "URLSearchParams": "readonly"
   }
 }

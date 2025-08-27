@@ -1,4 +1,7 @@
 // server.js
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -7,6 +10,10 @@ import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
 import compression from 'compression';
 import { z } from 'zod';
+import createError from 'http-errors';
+import morgan from 'morgan';
+import winston from 'winston';
+import expressStatusMonitor from 'express-status-monitor';
 
 // ESM-safe path resolution
 const __filename = fileURLToPath(import.meta.url);
@@ -14,6 +21,61 @@ const __dirname = path.dirname(__filename);
 // Render cwd is already /opt/render/project/src
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const TOKENS_PATH = path.join(DATA_DIR, 'admin_tokens.json');
+
+// Configure Winston logger
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
+    }),
+  ],
+});
+
+function logError(err) {
+  logger.error(err);
+}
+
+// Validation schemas
+const claimSchema = z.object({
+  job_id: z.string().min(3),
+});
+
+const releaseSchema = z.object({
+  job_id: z.string().min(3),
+});
+
+const completeSchema = z.object({
+  job_id: z.string().min(3),
+});
+
+const offerSchema = z.object({
+  job_id: z.string().min(3),
+  centre: z.string().min(2),
+  date: z.string().min(8),
+  time: z.string().min(4),
+  note: z.string().optional(),
+});
+
+const assignSchema = z.object({
+  job_id: z.string().min(3),
+  to_token: z.string().min(3),
+});
+
+const extendSchema = z.object({
+  job_id: z.string().min(3),
+  minutes: z.number().int().positive().max(240),
+});
+
+const replySchema = z.object({
+  job_id: z.string().min(3),
+  reply: z.enum(['YES', 'NO']),
+});
 
 const {
   GITHUB_TOKEN,
@@ -30,8 +92,7 @@ const {
 } = process.env;
 
 // Add a constant for tokens file path (can be overridden by env)
-const TOKENS_FILE_PATH =
-  process.env.ADMIN_TOKENS_FILE_PATH || 'data/admin_tokens.json';
+const TOKENS_FILE_PATH = process.env.ADMIN_TOKENS_FILE_PATH || 'data/admin_tokens.json';
 
 const publicDir = path.join(__dirname, 'public');
 
@@ -126,11 +187,8 @@ function listBookers() {
       .map(([token, info]) => ({
         token,
         name: info?.name || 'Admin',
-        coverage: Array.isArray(info?.coverage)
-          ? info.coverage.map(normCentreId)
-          : [],
-        availability:
-          typeof info?.availability === 'boolean' ? info.availability : true,
+        coverage: Array.isArray(info?.coverage) ? info.coverage.map(normCentreId) : [],
+        availability: typeof info?.availability === 'boolean' ? info.availability : true,
         role: info?.role || 'booker',
       }));
   } catch {
@@ -148,8 +206,7 @@ async function getCoverageForToken(token) {
         return json.centres.map(normCentreId).filter(Boolean);
       }
     } catch (e) {
-      if (e.status !== 404)
-        console.warn('Coverage file read error:', e.message);
+      if (e.status !== 404) console.warn('Coverage file read error:', e.message);
     }
 
     // Second try: data/admin_tokens.json with per-token coverage
@@ -263,25 +320,7 @@ const KeepAlive = (() => {
   };
 })();
 
-// Zod validation schemas
-const claimSchema = z.object({ job_id: z.string().min(3) });
-const releaseSchema = z.object({ job_id: z.string().min(3) });
-const completeSchema = z.object({ job_id: z.string().min(3) });
-const offerSchema = z.object({
-  job_id: z.string().min(3),
-  centre: z.string().min(2),
-  date: z.string().min(8),
-  time: z.string().min(4),
-  note: z.string().optional(),
-});
-const extendSchema = z.object({
-  job_id: z.string().min(3),
-  minutes: z.number().int().positive().max(240),
-});
-const replySchema = z.object({
-  job_id: z.string().min(3),
-  reply: z.enum(['YES', 'NO']),
-});
+// Duplicate schemas removed - using the ones defined at the top
 
 // Idempotency store
 const IdemStore = (() => {
@@ -371,21 +410,32 @@ function handleError(err, req, res, next) {
   }
 
   if (err.status) {
-    return res
-      .status(err.status)
-      .json({ error: err.message, code: err.code || 'UNKNOWN' });
+    return res.status(err.status).json({ error: err.message, code: err.code || 'UNKNOWN' });
   }
 
-  sendError(
-    res,
-    500,
-    'internal_error',
-    'INTERNAL_ERROR',
-    'Something went wrong'
-  );
+  sendError(res, 500, 'internal_error', 'INTERNAL_ERROR', 'Something went wrong');
 }
 
 const app = express();
+
+// Status monitoring dashboard
+app.use(
+  expressStatusMonitor({
+    title: 'Mr Tests Admin API Status',
+    path: '/status',
+    healthChecks: [
+      {
+        protocol: 'http',
+        host: 'localhost',
+        path: '/health',
+        port: process.env.PORT || 3000,
+      },
+    ],
+  })
+);
+
+// Request logging
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // Compression middleware
 app.use(compression());
@@ -393,6 +443,56 @@ app.use(compression());
 // CORS and JSON parsing
 app.use(cors(CORS_ORIGIN ? { origin: CORS_ORIGIN } : {}));
 app.use(express.json({ limit: '256kb' }));
+
+// Health endpoints
+app.get('/health', (req, res) => {
+  res.json({
+    ok: true,
+    service: 'mr-tests-admin-api',
+    time: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    version: process.version,
+  });
+});
+
+app.get('/health/deps', async (req, res) => {
+  const checks = {};
+
+  // Check Apps Script API
+  if (process.env.JOBS_API_BASE && process.env.JOBS_API_SECRET) {
+    try {
+      const url = `${process.env.JOBS_API_BASE}?action=health&secret=${process.env.JOBS_API_SECRET}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        timeout: 5000,
+      });
+      checks.apps_script = response.ok;
+    } catch (e) {
+      checks.apps_script = false;
+      logError({ message: 'Apps Script health check failed', error: e.message });
+    }
+  } else {
+    checks.apps_script = 'not_configured';
+  }
+
+  // Check file system
+  try {
+    checks.file_system = fs.existsSync(DATA_DIR);
+  } catch (e) {
+    checks.file_system = false;
+  }
+
+  const allOk = Object.values(checks).every(
+    (status) => status === true || status === 'not_configured'
+  );
+
+  res.status(allOk ? 200 : 503).json({
+    ok: allOk,
+    checks,
+    time: new Date().toISOString(),
+  });
+});
 
 // Static UI with caching
 app.use(
@@ -566,8 +666,7 @@ function roleFromPages(pages) {
 // Update resolveAdmin to read from file
 async function resolveAdminAsync(token) {
   if (!token) return null;
-  if (ADMIN_TOKEN && token === ADMIN_TOKEN)
-    return { name: 'Admin', pages: ['*'] };
+  if (ADMIN_TOKEN && token === ADMIN_TOKEN) return { name: 'Admin', pages: ['*'] };
   const map = await loadAdminMap();
   const entry = map[token];
   if (!entry) return null;
@@ -620,9 +719,7 @@ app.get('/api/admin-codes', auth, requirePage('admins'), async (_req, res) => {
     const out = {};
     for (const [k, v] of Object.entries(map)) {
       const name = v?.name || 'Admin';
-      const pages = Array.isArray(v?.pages)
-        ? v.pages
-        : pagesFromRole(v?.role || 'booker');
+      const pages = Array.isArray(v?.pages) ? v.pages : pagesFromRole(v?.role || 'booker');
       const role = typeof v?.role === 'string' ? v.role : roleFromPages(pages);
       const tokenInfo = tokens[k] || {};
       out[k] = {
@@ -659,14 +756,11 @@ app.put('/api/admin-codes', auth, requirePage('admins'), async (req, res) => {
       }
       if (!roleNorm) roleNorm = 'booker';
 
-      let pagesArr = Array.isArray(pages)
-        ? pages.map((p) => String(p).trim()).filter(Boolean)
-        : [];
+      let pagesArr = Array.isArray(pages) ? pages.map((p) => String(p).trim()).filter(Boolean) : [];
       if (!pagesArr.length) pagesArr = pagesFromRole(roleNorm);
 
       const map = await loadAdminMap();
-      if (map[safeCode])
-        return res.status(400).json({ error: 'code already exists' });
+      if (map[safeCode]) return res.status(400).json({ error: 'code already exists' });
 
       map[safeCode] = { name: name.trim(), pages: pagesArr, role: roleNorm };
       await saveAdminMap(map);
@@ -830,22 +924,17 @@ app.get('/api/test-centres', auth, async (_req, res) => {
 });
 
 // NEW: Recycle bin endpoint
-app.get(
-  '/api/test-centres-bin',
-  auth,
-  requirePage('admins'),
-  async (_req, res) => {
-    try {
-      const { json, sha } = await getFile();
-      // Only show deleted centres
-      const deletedCentres = json.filter((c) => c.deleted);
-      res.json({ centres: deletedCentres, sha });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: 'Failed to read deleted centres' });
-    }
+app.get('/api/test-centres-bin', auth, requirePage('admins'), async (_req, res) => {
+  try {
+    const { json, sha } = await getFile();
+    // Only show deleted centres
+    const deletedCentres = json.filter((c) => c.deleted);
+    res.json({ centres: deletedCentres, sha });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to read deleted centres' });
   }
-);
+});
 
 app.put('/api/test-centres', auth, async (req, res) => {
   try {
@@ -861,25 +950,17 @@ app.put('/api/test-centres', auth, async (req, res) => {
 
     if (mode === 'delete') {
       // require master
-      if (
-        !req.adminInfo?.pages?.includes('*') &&
-        !req.adminInfo?.pages?.includes('admins')
-      ) {
+      if (!req.adminInfo?.pages?.includes('*') && !req.adminInfo?.pages?.includes('admins')) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       const ids = req.body?.ids;
-      if (
-        !Array.isArray(ids) ||
-        ids.some((x) => typeof x !== 'string' || !x.trim())
-      ) {
+      if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string' || !x.trim())) {
         return res.status(400).json({ error: 'ids[] required' });
       }
 
       const { json: existing, sha: beforeSha } = await getFile();
       const remove = new Set(ids.map((s) => s.trim()));
-      const next = existing.map((c) =>
-        remove.has(c.id) ? { ...c, deleted: true } : c
-      );
+      const next = existing.map((c) => (remove.has(c.id) ? { ...c, deleted: true } : c));
 
       // Dependency check: remove from all bookers' coverage
       const adminMap = await loadAdminMap();
@@ -914,25 +995,17 @@ app.put('/api/test-centres', auth, async (req, res) => {
 
     if (mode === 'restore') {
       // require master
-      if (
-        !req.adminInfo?.pages?.includes('*') &&
-        !req.adminInfo?.pages?.includes('admins')
-      ) {
+      if (!req.adminInfo?.pages?.includes('*') && !req.adminInfo?.pages?.includes('admins')) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       const ids = req.body?.ids;
-      if (
-        !Array.isArray(ids) ||
-        ids.some((x) => typeof x !== 'string' || !x.trim())
-      ) {
+      if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string' || !x.trim())) {
         return res.status(400).json({ error: 'ids[] required' });
       }
 
       const { json: existing, sha: beforeSha } = await getFile();
       const restore = new Set(ids.map((s) => s.trim()));
-      const next = existing.map((c) =>
-        restore.has(c.id) ? { ...c, deleted: false } : c
-      );
+      const next = existing.map((c) => (restore.has(c.id) ? { ...c, deleted: false } : c));
 
       await putFile(next);
 
@@ -953,8 +1026,7 @@ app.put('/api/test-centres', auth, async (req, res) => {
       });
     }
 
-    if (mode !== 'append')
-      return res.status(400).json({ error: 'Only append mode allowed' });
+    if (mode !== 'append') return res.status(400).json({ error: 'Only append mode allowed' });
     const centres = req.body?.centres;
     if (!Array.isArray(centres) || !centres.length)
       return res.status(400).json({ error: 'centres[] required' });
@@ -969,8 +1041,7 @@ app.put('/api/test-centres', auth, async (req, res) => {
     const { json: existing, sha: beforeSha } = await getFile();
     const ids = new Set(existing.map((c) => c.id));
     for (const c of items) {
-      if (ids.has(c.id))
-        return res.status(400).json({ error: `Duplicate id: ${c.id}` });
+      if (ids.has(c.id)) return res.status(400).json({ error: `Duplicate id: ${c.id}` });
       ids.add(c.id);
     }
 
@@ -1010,10 +1081,7 @@ app.get('/api/my-centres', auth, async (req, res) => {
 app.put('/api/my-centres', auth, async (req, res) => {
   try {
     const list = req.body?.centres;
-    if (
-      !Array.isArray(list) ||
-      list.some((x) => typeof x !== 'string' || !x.trim())
-    ) {
+    if (!Array.isArray(list) || list.some((x) => typeof x !== 'string' || !x.trim())) {
       return res.status(400).json({ error: 'centres must be array of ids' });
     }
     const token = req.headers.authorization?.replace(/^Bearer /, '') || '';
@@ -1026,9 +1094,7 @@ app.put('/api/my-centres', auth, async (req, res) => {
         pages: req.adminInfo?.pages || ['centres'],
       };
     }
-    const beforeCentres = Array.isArray(map[token].centres)
-      ? map[token].centres
-      : [];
+    const beforeCentres = Array.isArray(map[token].centres) ? map[token].centres : [];
     map[token].centres = Array.from(new Set(list.map((s) => s.trim())));
     await saveAdminMap(map);
 
@@ -1096,10 +1162,8 @@ app.put('/api/my-profile', auth, async (req, res) => {
 
     const beforeProfile = {
       notes: map[token].notes || '',
-      maxDaily:
-        typeof map[token].maxDaily === 'number' ? map[token].maxDaily : 0,
-      available:
-        typeof map[token].available === 'boolean' ? map[token].available : true,
+      maxDaily: typeof map[token].maxDaily === 'number' ? map[token].maxDaily : 0,
+      available: typeof map[token].available === 'boolean' ? map[token].available : true,
     };
 
     if (notes !== undefined) map[token].notes = notes;
@@ -1145,9 +1209,8 @@ app.get('/api/jobs/board', auth, async (req, res) => {
     const coverageArr = await getCoverageForToken(token);
     const coverage = new Set(coverageArr);
 
-    const data = await JobCache.getOrSet(
-      ['board', 'open', token, q, limit, offset],
-      () => jobsGet({ status: 'open', assigned_to: '', q, limit, offset })
+    const data = await JobCache.getOrSet(['board', 'open', token, q, limit, offset], () =>
+      jobsGet({ status: 'open', assigned_to: '', q, limit, offset })
     );
 
     // Filter jobs by coverage with fallback logic
@@ -1160,9 +1223,7 @@ app.get('/api/jobs/board', auth, async (req, res) => {
             const rawCid =
               job.centre_id ||
               job.centre_name ||
-              (job.desired_centres
-                ? String(job.desired_centres).split(',')[0]
-                : '');
+              (job.desired_centres ? String(job.desired_centres).split(',')[0] : '');
             const cid = normCentreId(rawCid);
             return coverage.has(cid);
           });
@@ -1258,14 +1319,11 @@ app.post('/api/jobs/claim', auth, async (req, res) => {
 
     res.json(out);
   } catch (e) {
-    console.error('Claim error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'UPSTREAM_ERROR',
-      'Claim operation failed'
-    );
+    if (e instanceof z.ZodError) {
+      return sendError(res, 400, 'validation_error', 'VALIDATION_FAILED', 'Invalid request data');
+    }
+    logError({ message: 'Claim error', error: e.message, stack: e.stack });
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Claim operation failed');
   }
 });
 app.post('/api/jobs/release', auth, async (req, res) => {
@@ -1324,13 +1382,7 @@ app.post('/api/jobs/release', auth, async (req, res) => {
     res.json(out);
   } catch (e) {
     console.error('Release error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'UPSTREAM_ERROR',
-      'Release operation failed'
-    );
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Release operation failed');
   }
 });
 app.post('/api/jobs/complete', auth, async (req, res) => {
@@ -1389,13 +1441,7 @@ app.post('/api/jobs/complete', auth, async (req, res) => {
     res.json(out);
   } catch (e) {
     console.error('Complete error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'UPSTREAM_ERROR',
-      'Complete operation failed'
-    );
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Complete operation failed');
   }
 });
 
@@ -1406,9 +1452,7 @@ app.post('/api/jobs/create', auth, requirePage('admins'), async (req, res) => {
   try {
     const { job } = req.body || {};
     if (!job || !job.centre_id || !job.centre_name)
-      return res
-        .status(400)
-        .json({ error: 'centre_id and centre_name required' });
+      return res.status(400).json({ error: 'centre_id and centre_name required' });
     const out = await jobsPost({
       action: 'create_booking',
       booking: {
@@ -1537,13 +1581,7 @@ app.post('/api/jobs/offer', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('Offer error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'UPSTREAM_ERROR',
-      'Offer operation failed'
-    );
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Offer operation failed');
   }
 });
 
@@ -1636,13 +1674,7 @@ app.post('/api/jobs/offer/extend', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('Extend error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'UPSTREAM_ERROR',
-      'Extend operation failed'
-    );
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Extend operation failed');
   }
 });
 
@@ -1705,13 +1737,7 @@ app.post('/api/jobs/mark-client-reply', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('Mark reply error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'UPSTREAM_ERROR',
-      'Mark reply operation failed'
-    );
+    sendError(res, 502, 'upstream_failed', 'UPSTREAM_ERROR', 'Mark reply operation failed');
   }
 });
 
@@ -1743,13 +1769,9 @@ app.post('/api/public/booking-request', async (req, res) => {
     const booking = req.body || {};
     const required = ['Student Name', 'Phone'];
     const missing = required.filter((k) => !String(booking[k] || '').trim());
-    if (missing.length)
-      return res.status(400).json({ error: 'Missing fields', missing });
+    if (missing.length) return res.status(400).json({ error: 'Missing fields', missing });
     const data = await jobsPost({ action: 'create_booking', booking, ip });
-    if (!data.ok)
-      return res
-        .status(502)
-        .json({ error: 'Failed to create booking', detail: data });
+    if (!data.ok) return res.status(502).json({ error: 'Failed to create booking', detail: data });
 
     // Bust jobs cache so new booking appears immediately
     try {
@@ -1766,10 +1788,7 @@ app.post('/api/public/booking-request', async (req, res) => {
 // Booker management endpoints
 app.get('/api/admins/bookers', auth, async (req, res) => {
   try {
-    const authToken = (req.headers.authorization || '').replace(
-      /^Bearer\s+/,
-      ''
-    );
+    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
     if (!isMaster(authToken)) {
       return sendError(
         res,
@@ -1784,22 +1803,13 @@ app.get('/api/admins/bookers', auth, async (req, res) => {
     res.json({ bookers });
   } catch (e) {
     console.error('Get bookers error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'BOOKERS_ERROR',
-      'Failed to get bookers'
-    );
+    sendError(res, 502, 'upstream_failed', 'BOOKERS_ERROR', 'Failed to get bookers');
   }
 });
 
 app.get('/api/admins/bookers/:token/jobs', auth, async (req, res) => {
   try {
-    const authToken = (req.headers.authorization || '').replace(
-      /^Bearer\s+/,
-      ''
-    );
+    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
     if (!isMaster(authToken)) {
       return sendError(
         res,
@@ -1815,13 +1825,7 @@ app.get('/api/admins/bookers/:token/jobs', auth, async (req, res) => {
 
     const targetToken = req.params.token;
     if (!targetToken) {
-      return sendError(
-        res,
-        400,
-        'validation_error',
-        'TOKEN_REQUIRED',
-        'Booker token is required'
-      );
+      return sendError(res, 400, 'validation_error', 'TOKEN_REQUIRED', 'Booker token is required');
     }
 
     // Fetch jobs for this specific booker
@@ -1837,22 +1841,13 @@ app.get('/api/admins/bookers/:token/jobs', auth, async (req, res) => {
     res.json({ jobs });
   } catch (e) {
     console.error('Get booker jobs error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'BOOKER_JOBS_ERROR',
-      'Failed to get booker jobs'
-    );
+    sendError(res, 502, 'upstream_failed', 'BOOKER_JOBS_ERROR', 'Failed to get booker jobs');
   }
 });
 
 app.post('/api/jobs/assign', auth, async (req, res) => {
   try {
-    const authToken = (req.headers.authorization || '').replace(
-      /^Bearer\s+/,
-      ''
-    );
+    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
     if (!isMaster(authToken)) {
       return sendError(
         res,
@@ -1881,13 +1876,7 @@ app.post('/api/jobs/assign', auth, async (req, res) => {
     const bookers = listBookers();
     const targetBooker = bookers.find((b) => b.token === to_token);
     if (!targetBooker) {
-      return sendError(
-        res,
-        404,
-        'not_found',
-        'BOOKER_NOT_FOUND',
-        'Target booker not found'
-      );
+      return sendError(res, 404, 'not_found', 'BOOKER_NOT_FOUND', 'Target booker not found');
     }
 
     // Fetch the job to validate its status and centre
@@ -1896,23 +1885,14 @@ app.post('/api/jobs/assign', auth, async (req, res) => {
       booking_id: job_id,
       limit: 1,
     });
-    const job =
-      Array.isArray(jobData.jobs) && jobData.jobs.length > 0
-        ? jobData.jobs[0]
-        : null;
+    const job = Array.isArray(jobData.jobs) && jobData.jobs.length > 0 ? jobData.jobs[0] : null;
 
     if (!job) {
       return sendError(res, 404, 'not_found', 'JOB_NOT_FOUND', 'Job not found');
     }
 
     if (job.status !== 'open') {
-      return sendError(
-        res,
-        400,
-        'invalid_state',
-        'JOB_NOT_OPEN',
-        'Job is not open for assignment'
-      );
+      return sendError(res, 400, 'invalid_state', 'JOB_NOT_OPEN', 'Job is not open for assignment');
     }
 
     // Check coverage match
@@ -1958,13 +1938,7 @@ app.post('/api/jobs/assign', auth, async (req, res) => {
     res.json({ ok: true, assigned_to: to_token });
   } catch (e) {
     console.error('Job assignment error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'ASSIGN_ERROR',
-      'Failed to assign job'
-    );
+    sendError(res, 502, 'upstream_failed', 'ASSIGN_ERROR', 'Failed to assign job');
   }
 });
 
@@ -1984,10 +1958,7 @@ app.get('/api/debug/env-lite', (req, res) => {
 // Onboarding endpoints
 app.post('/api/admins/force-onboard', auth, async (req, res) => {
   try {
-    const authToken = (req.headers.authorization || '').replace(
-      /^Bearer\s+/,
-      ''
-    );
+    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
     if (!isMaster(authToken)) {
       return sendError(
         res,
@@ -2000,37 +1971,19 @@ app.post('/api/admins/force-onboard', auth, async (req, res) => {
 
     const { token } = req.body || {};
     if (!token) {
-      return sendError(
-        res,
-        400,
-        'validation_error',
-        'TOKEN_REQUIRED',
-        'Token is required'
-      );
+      return sendError(res, 400, 'validation_error', 'TOKEN_REQUIRED', 'Token is required');
     }
 
     const tokens = readTokens();
     if (!tokens[token]) {
-      return sendError(
-        res,
-        404,
-        'not_found',
-        'UNKNOWN_TOKEN',
-        'Token not found'
-      );
+      return sendError(res, 404, 'not_found', 'UNKNOWN_TOKEN', 'Token not found');
     }
 
     tokens[token].onboarding_required = true;
     tokens[token].onboarded_at = '';
 
     if (!writeTokens(tokens)) {
-      return sendError(
-        res,
-        502,
-        'write_failed',
-        'TOKEN_WRITE_ERROR',
-        'Failed to save token data'
-      );
+      return sendError(res, 502, 'write_failed', 'TOKEN_WRITE_ERROR', 'Failed to save token data');
     }
 
     // Bust cache
@@ -2041,13 +1994,7 @@ app.post('/api/admins/force-onboard', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('Force onboard error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'FORCE_ONBOARD_ERROR',
-      'Failed to force onboarding'
-    );
+    sendError(res, 502, 'upstream_failed', 'FORCE_ONBOARD_ERROR', 'Failed to force onboarding');
   }
 });
 
@@ -2061,18 +2008,11 @@ app.get('/api/my-onboarding', auth, (req, res) => {
       onboarding_required: !!me.onboarding_required,
       name: me.name || '',
       coverage: Array.isArray(me.coverage) ? me.coverage : [],
-      availability:
-        typeof me.availability === 'boolean' ? me.availability : true,
+      availability: typeof me.availability === 'boolean' ? me.availability : true,
     });
   } catch (e) {
     console.error('Get onboarding error:', e);
-    sendError(
-      res,
-      502,
-      'upstream_failed',
-      'ONBOARDING_ERROR',
-      'Failed to get onboarding status'
-    );
+    sendError(res, 502, 'upstream_failed', 'ONBOARDING_ERROR', 'Failed to get onboarding status');
   }
 });
 
@@ -2094,21 +2034,13 @@ app.post('/api/my-onboarding/complete', auth, async (req, res) => {
     const tokens = readTokens();
     tokens[token] = tokens[token] || {};
     tokens[token].name = String(name).trim();
-    tokens[token].coverage = coverage
-      .map((c) => normCentreId(c))
-      .filter(Boolean);
+    tokens[token].coverage = coverage.map((c) => normCentreId(c)).filter(Boolean);
     tokens[token].availability = !!availability;
     tokens[token].onboarding_required = false;
     tokens[token].onboarded_at = new Date().toISOString();
 
     if (!writeTokens(tokens)) {
-      return sendError(
-        res,
-        502,
-        'write_failed',
-        'TOKEN_WRITE_ERROR',
-        'Failed to save token data'
-      );
+      return sendError(res, 502, 'write_failed', 'TOKEN_WRITE_ERROR', 'Failed to save token data');
     }
 
     // Bust cache
@@ -2129,7 +2061,52 @@ app.post('/api/my-onboarding/complete', auth, async (req, res) => {
   }
 });
 
-// Global error handler (must be last)
+// Enhanced global error handler (must be last)
+app.use((err, req, res, next) => {
+  // Log the error
+  logError({
+    message: err.message,
+    stack: err.stack,
+    method: req.method,
+    path: req.path,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+  });
+
+  // Handle different error types
+  if (err instanceof z.ZodError) {
+    return res.status(400).json({
+      error: 'Validation error',
+      code: 'validation_failed',
+      details: err.errors,
+    });
+  }
+
+  if (err.name === 'UnauthorizedError') {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      code: 'unauthorized',
+    });
+  }
+
+  // Default error response
+  const status = err.status || err.statusCode || 500;
+  const code = err.code || 'server_error';
+  const message =
+    process.env.NODE_ENV === 'production'
+      ? status === 500
+        ? 'Internal server error'
+        : err.message
+      : err.message;
+
+  res.status(status).json({
+    error: message,
+    code: code,
+    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
+  });
+});
+
+// Fallback error handler
 app.use(handleError);
 
 const PORT = process.env.PORT || 3000;

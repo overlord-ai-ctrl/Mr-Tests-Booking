@@ -228,11 +228,7 @@
     const showOnboardingTip = () => {
       if (!localStorage.getItem('helpSeen')) {
         setTimeout(() => {
-          showToast(
-            'Tip: Claim a job, propose a test, then send to client.',
-            'info',
-            3000
-          );
+          showToast('Tip: Claim a job, propose a test, then send to client.', 'info', 3000);
           localStorage.setItem('helpSeen', '1');
         }, 2000);
       }
@@ -253,8 +249,7 @@
     const state = {
       name: init.name || '',
       coverage: Array.isArray(init.coverage) ? [...init.coverage] : [],
-      availability:
-        typeof init.availability === 'boolean' ? init.availability : true,
+      availability: typeof init.availability === 'boolean' ? init.availability : true,
     };
 
     let centres = []; // Will be loaded from API
@@ -298,9 +293,7 @@
         const sw = document.getElementById('onbAvail');
         sw?.addEventListener('change', () => {
           state.availability = !!sw.checked;
-          sw.nextElementSibling.textContent = state.availability
-            ? 'Available'
-            : 'Not available';
+          sw.nextElementSibling.textContent = state.availability ? 'Available' : 'Not available';
         });
       }
     }
@@ -320,9 +313,7 @@
           chip.type = 'button';
           chip.className =
             'btn btn-sm onb-centre-chip ' +
-            (state.coverage.includes(id)
-              ? 'btn-primary'
-              : 'btn-outline-primary');
+            (state.coverage.includes(id) ? 'btn-primary' : 'btn-outline-primary');
           chip.textContent = c.name;
           chip.onclick = () => {
             const i = state.coverage.indexOf(id);
@@ -400,10 +391,7 @@
     if (!isMaster?.() || String(job.status) !== 'open') return;
 
     const cidRaw =
-      job.centre_id ||
-      job.centre_name ||
-      (job.desired_centres || '').split(',')[0] ||
-      '';
+      job.centre_id || job.centre_name || (job.desired_centres || '').split(',')[0] || '';
     const coverers = bookersCovering(cidRaw);
 
     if (!coverers.length) {
@@ -513,9 +501,7 @@
     const box = document.getElementById('bookerMeta');
     if (!box || !b) return;
 
-    const cov = (b.coverage || [])
-      .map((id) => `<span class="chip">${id}</span>`)
-      .join(' ');
+    const cov = (b.coverage || []).map((id) => `<span class="chip">${id}</span>`).join(' ');
     const avail = b.availability
       ? '<span class="badge-availability badge-available">Available</span>'
       : '<span class="badge-availability badge-away">Away</span>';
@@ -534,10 +520,7 @@
 
     try {
       showSkeletons(pane, 3);
-      const data = await api(
-        `/api/admins/bookers/${encodeURIComponent(token)}/jobs`,
-        'GET'
-      );
+      const data = await api(`/api/admins/bookers/${encodeURIComponent(token)}/jobs`, 'GET');
       const jobs = data.jobs || [];
 
       pane.innerHTML = '';
@@ -545,9 +528,7 @@
       // Group jobs by status
       const groups = {
         claimed: jobs.filter((j) => j.status === 'claimed'),
-        offered: jobs.filter(
-          (j) => j.status === 'offered' || j.status === 'offered_expired'
-        ),
+        offered: jobs.filter((j) => j.status === 'offered' || j.status === 'offered_expired'),
         confirmed: jobs.filter((j) => j.status === 'confirmed_yes'),
       };
 
@@ -754,9 +735,7 @@
           showToast(`Rate limited, retrying in ${retryAfter}s...`, 'warn');
 
           // Wait and retry once
-          await new Promise((resolve) =>
-            setTimeout(resolve, retryAfter * 1000)
-          );
+          await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
           return makeRequest();
         }
 
@@ -765,10 +744,7 @@
           try {
             const errorData = JSON.parse(errorText);
             if (errorData.error === 'validation_error') {
-              showToast(
-                `Validation error: ${errorData.hint || 'Invalid input'}`,
-                'error'
-              );
+              showToast(`Validation error: ${errorData.hint || 'Invalid input'}`, 'error');
               return { error: 'validation', details: errorData };
             }
           } catch {}
@@ -804,9 +780,7 @@
     // Always show these four for bookers:
     ['centres', 'profile', 'jobs', 'myjobs'].forEach((key) => {
       const el =
-        document
-          .querySelector(`[data-nav="${key}"]`)
-          ?.closest('li, .nav-item') ||
+        document.querySelector(`[data-nav="${key}"]`)?.closest('li, .nav-item') ||
         document.querySelector(`[data-nav="${key}"]`);
       if (el) {
         el.classList.remove('d-none');
@@ -818,9 +792,7 @@
     // Hide Admin Codes and Bookers tabs:
     ['admins', 'bookers'].forEach((key) => {
       const el =
-        document
-          .querySelector(`[data-nav="${key}"]`)
-          ?.closest('li, .nav-item') ||
+        document.querySelector(`[data-nav="${key}"]`)?.closest('li, .nav-item') ||
         document.querySelector(`[data-nav="${key}"]`);
       if (el) {
         el.classList.add('d-none');
@@ -877,11 +849,7 @@
       showOnlyBookerTabs();
       // If active tab is hidden (e.g., defaulted to Admins), switch to Jobs Board
       const active = document.querySelector('#nav .nav-link.active');
-      if (
-        !active ||
-        active.dataset.nav === 'admins' ||
-        active.dataset.nav === 'centres'
-      ) {
+      if (!active || active.dataset.nav === 'admins' || active.dataset.nav === 'centres') {
         setActiveTab('jobs'); // function below
       }
     }
@@ -1044,9 +1012,7 @@
     // Wire claim/complete buttons to new functions
     const claimBtn =
       card.querySelector('[data-action="claim"]') ||
-      Array.from(card.querySelectorAll('button')).find((b) =>
-        /claim/i.test(b.textContent || '')
-      );
+      Array.from(card.querySelectorAll('button')).find((b) => /claim/i.test(b.textContent || ''));
     if (claimBtn) {
       claimBtn.onclick = () => claimJob(j.id);
     }
@@ -1096,8 +1062,7 @@
     const b = new Date(parts[1]);
     if (isNaN(a) || isNaN(b)) return raw;
     const dd = (d) => String(d.getDate()).padStart(2, '0');
-    const MMM = (d) =>
-      d.toLocaleString('en-GB', { month: 'short' }).toUpperCase();
+    const MMM = (d) => d.toLocaleString('en-GB', { month: 'short' }).toUpperCase();
     const y = (d) => d.getFullYear();
     const left = `${dd(a)} ${MMM(a)}`;
     const right = `${dd(b)} ${MMM(b)}`;
@@ -1168,10 +1133,7 @@
     add('Student Name', j.candidate);
     add('Licence Number', j.licence_number);
     add('DVSA Ref', j.dvsa_ref || j.dvsa_reference || j['DVSA Reference']);
-    add(
-      'Notes',
-      j.notes || j.customer_comments || j.booking_notes || j['Notes']
-    );
+    add('Notes', j.notes || j.customer_comments || j.booking_notes || j['Notes']);
     add('Desired Centres', j.desired_centres);
     add('Desired Range', formatRangeNice(j.desired_range));
 
@@ -1187,8 +1149,7 @@
     const status = String(j.status || '').toLowerCase();
     const isOffered = status === 'offered';
     const isExpired =
-      status === 'offered_expired' ||
-      (isOffered && isOfferExpired(j.offer_expires_at));
+      status === 'offered_expired' || (isOffered && isOfferExpired(j.offer_expires_at));
     const isConfirmed = status === 'confirmed_yes';
     const isDeclined = status === 'confirmed_no';
 
@@ -1266,9 +1227,7 @@
       COVERAGE.forEach((centreId) => {
         const option = document.createElement('option');
         option.value = centreId;
-        option.textContent = centreId
-          .replace(/-/g, ' ')
-          .replace(/\b\w/g, (l) => l.toUpperCase());
+        option.textContent = centreId.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
         centreSelect.appendChild(option);
       });
       centreField.append(centreLabel, centreSelect);
@@ -1349,13 +1308,7 @@
             alert('Please fill in centre, date, and time');
             return;
           }
-          sendOffer(
-            j.id,
-            centreSelect.value,
-            dateInput.value,
-            timeInput.value,
-            noteInput.value
-          );
+          sendOffer(j.id, centreSelect.value, dateInput.value, timeInput.value, noteInput.value);
         };
         actions.appendChild(sendBtn);
       } else if (isExpired) {
@@ -1416,12 +1369,7 @@
 
       try {
         BusyOverlay.show('Claiming job…');
-        const result = await api(
-          '/api/jobs/claim',
-          'POST',
-          { job_id: jobId },
-          `claim:${jobId}`
-        );
+        const result = await api('/api/jobs/claim', 'POST', { job_id: jobId }, `claim:${jobId}`);
 
         if (result.error === 'validation') {
           showToast('Invalid job ID', 'error');
@@ -1484,8 +1432,7 @@
         if (card) {
           const actionsDiv = card.querySelector('.job-actions');
           if (actionsDiv) {
-            actionsDiv.innerHTML =
-              '<span class="badge bg-success">Completed ✓</span>';
+            actionsDiv.innerHTML = '<span class="badge bg-success">Completed ✓</span>';
           }
         }
 
@@ -1505,9 +1452,7 @@
     return ActionLock.withActionLock(`offer:${jobId}`, async () => {
       // Check if offline
       if (OfflineQueue.isOffline()) {
-        OfflineQueue.addToQueue(() =>
-          sendOffer(jobId, centre, date, time, note)
-        );
+        OfflineQueue.addToQueue(() => sendOffer(jobId, centre, date, time, note));
         return;
       }
 
@@ -1528,10 +1473,7 @@
         );
 
         if (result.error === 'validation') {
-          showToast(
-            `Validation error: ${result.details?.hint || 'Invalid input'}`,
-            'error'
-          );
+          showToast(`Validation error: ${result.details?.hint || 'Invalid input'}`, 'error');
           return;
         }
 
@@ -1653,9 +1595,7 @@
   // JOBS BOARD
   const _doLoadJobs = async (prefetch = false) => {
     const list = document.getElementById('jobsList');
-    const q = (
-      document.getElementById('jobsSearch')?.value || ''
-    ).toLowerCase();
+    const q = (document.getElementById('jobsSearch')?.value || '').toLowerCase();
 
     if (!prefetch && list) showSkeletons(list, 3);
     if (!prefetch) status?.('jobsStatus', 'Loading…');
@@ -1682,9 +1622,7 @@
         const cidRaw =
           job.centre_id ||
           job.centre_name ||
-          (job.desired_centres
-            ? String(job.desired_centres).split(',')[0]
-            : '');
+          (job.desired_centres ? String(job.desired_centres).split(',')[0] : '');
         const cid = normCentreId(cidRaw);
         return COVERAGE.has(cid);
       });
@@ -1787,12 +1725,8 @@
 
       list.innerHTML = '';
       if (!jobs.length) {
-        renderEmptyState(
-          list,
-          'No claimed jobs',
-          'Claim a job from Find Jobs.',
-          'Find Jobs',
-          () => setActiveTab('jobs')
+        renderEmptyState(list, 'No claimed jobs', 'Claim a job from Find Jobs.', 'Find Jobs', () =>
+          setActiveTab('jobs')
         );
         document.getElementById('earnings').textContent = '';
         status?.('myJobsStatus', 'Loaded', true);
@@ -1842,15 +1776,13 @@
       });
       const per = data.payout_per_job || 70;
       const due = data.total_due || 0;
-      document.getElementById('earnings').textContent =
-        `£${due} due (£${per} per completed)`;
+      document.getElementById('earnings').textContent = `£${due} due (£${per} per completed)`;
       status?.('myJobsStatus', 'Loaded', true);
     } catch (e) {
       if (e.name === 'AbortError') return;
       console.error(e);
       if (!prefetch) {
-        list.innerHTML =
-          '<div class="placeholder">Failed to load your jobs.</div>';
+        list.innerHTML = '<div class="placeholder">Failed to load your jobs.</div>';
         status?.('myJobsStatus', 'Failed');
       }
     }
@@ -1888,12 +1820,7 @@
         right.className = 'd-flex align-items-center gap-2';
         if (isMaster()) {
           right.append(
-            iconButton(
-              'bi-trash',
-              'Delete centre',
-              () => deleteCentre(c.id),
-              'text-danger'
-            )
+            iconButton('bi-trash', 'Delete centre', () => deleteCentre(c.id), 'text-danger')
           );
         }
         row.append(left, right);
@@ -1973,9 +1900,7 @@
 
   async function saveCoverage() {
     const chosen = [
-      ...document.querySelectorAll(
-        '#myCoverageBox input[name="myCoverage[]"]:checked'
-      ),
+      ...document.querySelectorAll('#myCoverageBox input[name="myCoverage[]"]:checked'),
     ].map((i) => i.value);
     status('coverageStatus', 'Saving…');
     try {
@@ -2013,12 +1938,7 @@
       right.className = 'd-flex align-items-center gap-2';
       if (isMaster()) {
         right.append(
-          iconButton(
-            'bi-trash',
-            'Delete centre',
-            () => deleteCentre(id),
-            'text-danger'
-          )
+          iconButton('bi-trash', 'Delete centre', () => deleteCentre(id), 'text-danger')
         );
       }
 
@@ -2166,9 +2086,7 @@
       });
     } catch (e) {
       const ul = document.getElementById('profileCentres');
-      if (ul)
-        ul.innerHTML =
-          '<li class="placeholder">Could not load preferred centres.</li>';
+      if (ul) ul.innerHTML = '<li class="placeholder">Could not load preferred centres.</li>';
     }
   }
 
@@ -2215,8 +2133,7 @@
       codeBadge.className = 'badge text-bg-light';
       codeBadge.textContent = code;
 
-      const role =
-        info?.role || ((info?.pages || []).includes('*') ? 'master' : 'booker');
+      const role = info?.role || ((info?.pages || []).includes('*') ? 'master' : 'booker');
       const roleBadge = document.createElement('span');
       roleBadge.className = 'badge text-bg-primary';
       roleBadge.textContent = role;
@@ -2253,12 +2170,7 @@
         }
 
         row.append(
-          iconButton(
-            'bi-trash',
-            'Delete admin',
-            () => deleteAdminCode(code),
-            'text-danger'
-          )
+          iconButton('bi-trash', 'Delete admin', () => deleteAdminCode(code), 'text-danger')
         );
       }
       list.appendChild(row);
