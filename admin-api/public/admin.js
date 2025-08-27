@@ -550,15 +550,40 @@
     const add = (label, val)=>{
       const dt = document.createElement('dt'); 
       dt.textContent = label;
-      const dd = document.createElement('dd'); 
-      dd.textContent = val || '—';
+      const dd = document.createElement('dd');
+      
+      // Handle DVSA Ref and Notes specially - show actual content if exists
+      if (label === 'DVSA Ref') {
+        dd.textContent = (val && val.trim()) ? val.trim() : '—';
+      } else if (label === 'Notes') {
+        dd.textContent = (val && val.trim()) ? val.trim() : '—';
+        dd.style.whiteSpace = 'pre-wrap';
+        dd.style.wordBreak = 'break-word';
+      } else {
+        dd.textContent = val || '—';
+      }
+      
       dl.append(dt, dd);
     };
 
+    // Debug: log all job properties to help identify correct field names
+    console.log('Job details for debugging:', {
+      id: j.id,
+      candidate: j.candidate,
+      licence_number: j.licence_number,
+      dvsa_ref: j.dvsa_ref,
+      notes: j.notes,
+      // Also check alternative field names
+      dvsa_reference: j.dvsa_reference,
+      customer_comments: j.customer_comments,
+      booking_notes: j.booking_notes,
+      allKeys: Object.keys(j)
+    });
+    
     add('Student Name', j.candidate);
     add('Licence Number', j.licence_number);
-    add('DVSA Ref', j.dvsa_ref);
-    add('Notes', j.notes);
+    add('DVSA Ref', j.dvsa_ref || j.dvsa_reference || j['DVSA Reference']);
+    add('Notes', j.notes || j.customer_comments || j.booking_notes || j['Notes']);
     add('Desired Centres', j.desired_centres);
     add('Desired Range', formatRangeNice(j.desired_range));
 
