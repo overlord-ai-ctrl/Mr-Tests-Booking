@@ -79,6 +79,20 @@
     return dt.toString() !== 'Invalid Date' && dt.getTime() > Date.now(); 
   }
 
+  // Onboarding check
+  async function checkOnboarding() {
+    try {
+      const data = await api('/api/my-onboarding', 'GET');
+      if (data.onboarding_required) {
+        startOnboardingWizard(data);
+        return true;
+      }
+    } catch (e) {
+      console.error('Onboarding check failed:', e);
+    }
+    return false;
+  }
+
   // Keep one AbortController per loader to cancel in-flight fetches
   let _jobsAC = null;
   let _myJobsAC = null;
@@ -154,6 +168,152 @@
     
     return { show, hide, showOnboardingTip };
   })();
+
+  // Onboarding wizard
+  function startOnboardingWizard(init) {
+    const modal = document.getElementById('onboardModal');
+    const wrap = document.getElementById('onbStepWrap');
+    const bBack = document.getElementById('onbBack');
+    const bNext = document.getElementById('onbNext');
+    const bFinish = document.getElementById('onbFinish');
+
+    let step = 0;
+    const state = {
+      name: init.name || '',
+      coverage: Array.isArray(init.coverage) ? [...init.coverage] : [],
+      availability: typeof init.availability === 'boolean' ? init.availability : true
+    };
+
+    let centres = []; // Will be loaded from API
+
+    function render() {
+      modal.classList.remove('d-none');
+      bBack.classList.toggle('d-none', step === 0);
+      bNext.classList.toggle('d-none', step === 2);
+      bFinish.classList.toggle('d-none', step !== 2);
+
+      if (step === 0) {
+        wrap.innerHTML = `
+          <div class="onb-grid">
+            <label class="form-label">Your display name</label>
+            <input id="onbName" class="form-control" placeholder="e.g. Sam" value="${state.name || ''}">
+            <div class="onb-help">Your name appears on jobs you claim.</div>
+          </div>`;
+        setTimeout(() => document.getElementById('onbName')?.focus(), 30);
+      }
+      
+      if (step === 1) {
+        wrap.innerHTML = `
+          <div class="onb-grid">
+            <label class="form-label">Your coverage centres</label>
+            <div id="onbCentres" class="onb-centres"></div>
+            <div class="onb-help">Pick at least one centre you can cover.</div>
+          </div>`;
+        loadCentresForOnboarding();
+      }
+      
+      if (step === 2) {
+        wrap.innerHTML = `
+          <div class="onb-grid">
+            <label class="form-label">Availability</label>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="onbAvail" ${state.availability ? 'checked' : ''}>
+              <label class="form-check-label" for="onbAvail">${state.availability ? 'Available' : 'Not available'}</label>
+            </div>
+            <div class="onb-help">You can change this anytime in Profile.</div>
+          </div>`;
+        const sw = document.getElementById('onbAvail');
+        sw?.addEventListener('change', () => {
+          state.availability = !!sw.checked;
+          sw.nextElementSibling.textContent = state.availability ? 'Available' : 'Not available';
+        });
+      }
+    }
+
+    async function loadCentresForOnboarding() {
+      try {
+        if (!centres.length) {
+          centres = await api('/api/test-centres', 'GET') || [];
+        }
+        const box = document.getElementById('onbCentres');
+        if (!box) return;
+        
+        box.innerHTML = '';
+        centres.forEach(c => {
+          const id = c.id || c.name;
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'btn btn-sm onb-centre-chip ' + (state.coverage.includes(id) ? 'btn-primary' : 'btn-outline-primary');
+          chip.textContent = c.name;
+          chip.onclick = () => {
+            const i = state.coverage.indexOf(id);
+            if (i >= 0) {
+              state.coverage.splice(i, 1);
+              chip.className = 'btn btn-sm onb-centre-chip btn-outline-primary';
+            } else {
+              state.coverage.push(id);
+              chip.className = 'btn btn-sm onb-centre-chip btn-primary';
+            }
+          };
+          box.appendChild(chip);
+        });
+      } catch (e) {
+        console.error('Failed to load centres for onboarding:', e);
+      }
+    }
+
+    bBack.onclick = () => {
+      step = Math.max(0, step - 1);
+      render();
+    };
+
+    bNext.onclick = () => {
+      if (step === 0) {
+        const v = document.getElementById('onbName')?.value?.trim();
+        if (!v || v.length < 2) {
+          alert('Please enter your name (at least 2 characters)');
+          return;
+        }
+        state.name = v;
+      }
+      if (step === 1) {
+        if (!state.coverage.length) {
+          alert('Select at least one centre');
+          return;
+        }
+      }
+      step = Math.min(2, step + 1);
+      render();
+    };
+
+    bFinish.onclick = async () => {
+      if (!state.coverage.length) {
+        alert('Select at least one centre');
+        return;
+      }
+      try {
+        BusyOverlay?.show?.('Saving onboarding…');
+        await api('/api/my-onboarding/complete', 'POST', state);
+        BusyOverlay?.hide?.();
+        modal.classList.add('d-none');
+        showToast?.('Onboarding complete ✓', 'success');
+        
+        // Reload profile and jobs
+        loadProfile?.();
+        loadJobs?.();
+        loadMyJobs?.();
+        
+        // Enable normal app functionality
+        applyVisibility?.();
+      } catch (e) {
+        BusyOverlay?.hide?.();
+        console.error('Onboarding completion failed:', e);
+        alert('Failed to save onboarding. Please try again.');
+      }
+    };
+
+    render();
+  }
 
   // Action lock utility to prevent double-clicks
   const ActionLock = (() => {
@@ -465,6 +625,13 @@
       loadProfileStats();
       if (typeof loadCodes === 'function' && isMaster()) loadCodes();
       
+      // Check for required onboarding first
+      const blocked = await checkOnboarding();
+      if (blocked) {
+        // Onboarding wizard is shown, don't proceed with normal initialization
+        return;
+      }
+
       // Default landing for bookers: Jobs Board (or restore last tab)
       if (!isMaster()) {
         const preferredTab = loadTab();
@@ -1497,10 +1664,33 @@
       const row = document.createElement('div'); row.className = 'code-row';
       const name = document.createElement('div'); name.textContent = info?.name || 'Admin';
       const codeBadge = document.createElement('span'); codeBadge.className='badge text-bg-light'; codeBadge.textContent=code;
-      const roleBadge = document.createElement('span'); roleBadge.className='badge text-bg-primary'; roleBadge.textContent = info?.role || ((info?.pages||[]).includes('*') ? 'master' : 'booker');
+      
+      const role = info?.role || ((info?.pages||[]).includes('*') ? 'master' : 'booker');
+      const roleBadge = document.createElement('span'); roleBadge.className='badge text-bg-primary'; roleBadge.textContent = role;
+      
       const spacer = document.createElement('div'); spacer.className='spacer';
       row.append(name, codeBadge, roleBadge, spacer);
+      
       if (isMaster()) {
+        // Add Force Onboard button for non-master admins
+        if (role !== 'master') {
+          if (info?.onboarding_required) {
+            // Show status and reset button
+            const statusBadge = document.createElement('span');
+            statusBadge.className = 'badge text-bg-warning me-2';
+            statusBadge.textContent = 'Onboarding Required';
+            row.append(statusBadge);
+            row.append(iconButton('bi-arrow-clockwise', 'Reset onboarding', () => forceOnboard(code), 'text-warning'));
+          } else {
+            // Show force onboard button
+            const forceBtn = document.createElement('button');
+            forceBtn.className = 'btn btn-sm btn-outline-warning me-2';
+            forceBtn.textContent = 'Force Onboard';
+            forceBtn.onclick = () => forceOnboard(code);
+            row.append(forceBtn);
+          }
+        }
+        
         row.append(iconButton('bi-trash', 'Delete admin', ()=>deleteAdminCode(code), 'text-danger'));
       }
       list.appendChild(row);
@@ -1516,6 +1706,22 @@
       // refresh list
       loadCodes();
     } catch (e) { console.error(e); status('codesStatus','Failed to delete'); }
+  }
+
+  async function forceOnboard(code) {
+    if (!confirm(`Force onboarding for admin code "${code}"? They will need to complete setup before accessing the app.`)) return;
+    status('codesStatus','Forcing onboarding…');
+    try {
+      await api('/api/admins/force-onboard', 'POST', { token: code });
+      showToast('Onboarding forced ✓', 'success');
+      status('codesStatus','Updated ✓',true);
+      // refresh list to show updated status
+      loadCodes();
+    } catch (e) { 
+      console.error(e); 
+      status('codesStatus','Failed to force onboarding'); 
+      showToast('Failed to force onboarding', 'error');
+    }
   }
 
   async function loadCodes() {
