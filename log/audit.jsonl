@@ -105,5 +105,18 @@
         "slough"
       ]
     }
+  },
+  {
+    "timestamp": "2025-08-27T19:23:29.374Z",
+    "actor": "Admin",
+    "action": "admins.append",
+    "target": "admin_tokens.json",
+    "beforeSha": null,
+    "afterSha": null,
+    "details": {
+      "code": "1232",
+      "name": "Racheal",
+      "role": "booker"
+    }
   }
 ]
