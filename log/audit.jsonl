@@ -118,5 +118,20 @@
       "name": "Racheal",
       "role": "booker"
     }
+  },
+  {
+    "timestamp": "2025-08-27T19:48:12.684Z",
+    "actor": "Racheal",
+    "action": "coverage.set",
+    "target": "admin_tokens.json",
+    "beforeSha": null,
+    "afterSha": null,
+    "details": {
+      "beforeCentres": [],
+      "afterCentres": [
+        "london-mill-hill",
+        "slough"
+      ]
+    }
   }
 ]
