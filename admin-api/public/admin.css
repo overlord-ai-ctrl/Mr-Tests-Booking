@@ -1080,3 +1080,59 @@ body.dark .onb-centres {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
+
+/* Booker management */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.badge-availability {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.badge-available {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.badge-away {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.assign-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eef2f7;
+}
+
+body.dark .assign-wrap {
+  border-top-color: #4a5568;
+}
+
+.assign-wrap select {
+  min-width: 120px;
+}
+
+.booker-section {
+  margin-bottom: 24px;
+}
+
+.booker-section h6 {
+  color: #012970;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+body.dark .booker-section h6 {
+  color: #e2e8f0;
+}

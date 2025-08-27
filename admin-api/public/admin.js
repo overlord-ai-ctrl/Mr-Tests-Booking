@@ -93,6 +93,32 @@
     return false;
   }
 
+  // Booker management
+  let _bookersCache = null;
+
+  async function getBookers() {
+    if (_bookersCache) return _bookersCache;
+    try {
+      const data = await api('/api/admins/bookers', 'GET');
+      _bookersCache = data.bookers || [];
+      return _bookersCache;
+    } catch (e) {
+      console.error('Failed to get bookers:', e);
+      return [];
+    }
+  }
+
+  function bookersCovering(cid) {
+    const id = normCentreId(cid);
+    return (_bookersCache || []).filter(b => 
+      (b.coverage || []).includes(id)
+    );
+  }
+
+  function clearBookersCache() {
+    _bookersCache = null;
+  }
+
   // Keep one AbortController per loader to cancel in-flight fetches
   let _jobsAC = null;
   let _myJobsAC = null;
@@ -315,6 +341,185 @@
     render();
   }
 
+  // Assignment UI for job cards
+  async function renderAssignUI(card, job) {
+    // Only for masters and open jobs
+    if (!isMaster?.() || String(job.status) !== 'open') return;
+    
+    const cidRaw = job.centre_id || job.centre_name || 
+      (job.desired_centres || '').split(',')[0] || '';
+    const coverers = bookersCovering(cidRaw);
+    
+    if (!coverers.length) {
+      // Show "No bookers cover this centre" message
+      const msg = document.createElement('div');
+      msg.className = 'assign-wrap text-muted';
+      msg.innerHTML = '<small>No bookers cover this centre</small>';
+      card.appendChild(msg);
+      return;
+    }
+    
+    const wrap = document.createElement('div');
+    wrap.className = 'assign-wrap';
+    
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm';
+    sel.innerHTML = '<option value="">Assign to…</option>';
+    
+    coverers.forEach(b => {
+      const o = document.createElement('option');
+      o.value = b.token;
+      o.textContent = `${b.name || b.token} ${b.availability ? '• Available' : '• Away'}`;
+      sel.appendChild(o);
+    });
+    
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-outline-primary';
+    btn.textContent = 'Assign';
+    btn.onclick = async () => {
+      const to = sel.value;
+      if (!to) return alert('Choose a booker');
+      try {
+        BusyOverlay?.show?.('Assigning…');
+        await api('/api/jobs/assign', 'POST', { job_id: job.id, to_token: to });
+        BusyOverlay?.hide?.();
+        showToast?.('Assigned ✓', 'success');
+        loadJobs?.(); // refresh board
+        
+        // If Bookers tab open and that booker selected, refresh their list too
+        if (document.querySelector('[data-page="bookers"]')?.hidden === false) {
+          const picker = document.getElementById('bookerPicker');
+          if (picker?.value === to) {
+            loadBookerJobs?.(to);
+          }
+        }
+      } catch (e) {
+        BusyOverlay?.hide?.();
+        console.error('Assignment failed:', e);
+        showToast?.('Assignment failed', 'error');
+      }
+    };
+    
+    wrap.append(sel, btn);
+    card.appendChild(wrap);
+  }
+
+  // Bookers tab functionality
+  async function loadBookersTab() {
+    if (!isMaster?.()) return;
+    
+    try {
+      const list = await getBookers();
+      const picker = document.getElementById('bookerPicker');
+      if (!picker) return;
+      
+      picker.innerHTML = '<option value="">Select a booker...</option>';
+      list.forEach(b => {
+        const o = document.createElement('option');
+        o.value = b.token;
+        o.textContent = `${b.name || b.token} ${b.availability ? '(Available)' : '(Away)'}`;
+        picker.appendChild(o);
+      });
+      
+      // Restore last selected booker
+      const last = localStorage.getItem('lastBookerToken');
+      if (last && list.some(b => b.token === last)) {
+        picker.value = last;
+      }
+      
+      picker.onchange = () => {
+        const selectedToken = picker.value;
+        if (selectedToken) {
+          localStorage.setItem('lastBookerToken', selectedToken);
+          loadBookerJobs(selectedToken);
+          renderBookerMeta(selectedToken, list);
+        } else {
+          document.getElementById('bookerMeta').innerHTML = '';
+          document.getElementById('bookerJobs').innerHTML = '';
+        }
+      };
+      
+      // Load initial booker if one is selected
+      if (picker.value) {
+        renderBookerMeta(picker.value, list);
+        loadBookerJobs(picker.value);
+      } else if (list.length > 0) {
+        picker.value = list[0].token;
+        picker.onchange();
+      }
+    } catch (e) {
+      console.error('Failed to load bookers tab:', e);
+    }
+  }
+
+  function renderBookerMeta(token, list) {
+    const b = (list || []).find(x => x.token === token);
+    const box = document.getElementById('bookerMeta');
+    if (!box || !b) return;
+    
+    const cov = (b.coverage || []).map(id => `<span class="chip">${id}</span>`).join(' ');
+    const avail = b.availability ? 
+      '<span class="badge-availability badge-available">Available</span>' : 
+      '<span class="badge-availability badge-away">Away</span>';
+    
+    box.innerHTML = `
+      <div class="mb-2">${b.name || token} ${avail}</div>
+      <div class="chips">${cov}</div>
+    `;
+  }
+
+  async function loadBookerJobs(token) {
+    if (!token) return;
+    
+    const pane = document.getElementById('bookerJobs');
+    if (!pane) return;
+    
+    try {
+      showSkeletons(pane, 3);
+      const data = await api(`/api/admins/bookers/${encodeURIComponent(token)}/jobs`, 'GET');
+      const jobs = data.jobs || [];
+      
+      pane.innerHTML = '';
+      
+      // Group jobs by status
+      const groups = {
+        claimed: jobs.filter(j => j.status === 'claimed'),
+        offered: jobs.filter(j => j.status === 'offered' || j.status === 'offered_expired'),
+        confirmed: jobs.filter(j => j.status === 'confirmed_yes')
+      };
+      
+      function section(title, arr) {
+        const sectionDiv = document.createElement('div');
+        sectionDiv.className = 'booker-section';
+        
+        const h = document.createElement('h6');
+        h.textContent = title;
+        sectionDiv.appendChild(h);
+        
+        if (!arr.length) {
+          const p = document.createElement('div');
+          p.className = 'emptystate';
+          p.textContent = 'None';
+          sectionDiv.appendChild(p);
+        } else {
+          arr.forEach(j => {
+            const card = renderJobCard(j, [], 'myjobs');
+            if (card) sectionDiv.appendChild(card);
+          });
+        }
+        
+        pane.appendChild(sectionDiv);
+      }
+      
+      section('Claimed', groups.claimed);
+      section('Offered / Awaiting Reply', groups.offered);
+      section('Confirmed', groups.confirmed);
+    } catch (e) {
+      console.error('Failed to load booker jobs:', e);
+      pane.innerHTML = '<div class="emptystate">Failed to load jobs</div>';
+    }
+  }
+
   // Action lock utility to prevent double-clicks
   const ActionLock = (() => {
     const locks = new Map();
@@ -530,12 +735,14 @@
         console.log(`Tab not found: ${key}`);
       }
     });
-    // Hide Admin Codes:
-    const adminEl = document.querySelector('[data-nav="admins"]')?.closest('li, .nav-item') || document.querySelector('[data-nav="admins"]');
-    if (adminEl) {
-      adminEl.classList.add('d-none');
-      console.log('Hiding Admin Codes tab');
-    }
+    // Hide Admin Codes and Bookers tabs:
+    ['admins', 'bookers'].forEach(key => {
+      const el = document.querySelector(`[data-nav="${key}"]`)?.closest('li, .nav-item') || document.querySelector(`[data-nav="${key}"]`);
+      if (el) {
+        el.classList.add('d-none');
+        console.log(`Hiding ${key} tab`);
+      }
+    });
   }
 
   function setActiveTab(key){
@@ -566,6 +773,7 @@
     if (key === 'myjobs') loadMyJobs?.();
     if (key === 'profile') loadProfile?.();
     if (key === 'centres') loadCentres?.();
+    if (key === 'bookers') loadBookersTab?.();
   }
 
   function applyVisibility() {
@@ -1292,6 +1500,11 @@
         status?.('jobsStatus','Loaded',true);
         return;
       }
+      // Ensure bookers cache is loaded for assignment UI
+      if (isMaster?.()) {
+        await getBookers();
+      }
+      
       filteredJobs.forEach(j=>{
         const claim = btn?.('Claim','success');
         if (claim) claim.onclick = async () => {
@@ -1306,7 +1519,14 @@
           catch(e){ alert('Failed to delete'); }
         };
         const actions = (isMaster?.()) ? [claim, del] : [claim].filter(Boolean);
-        list.appendChild(renderJobCard?.(j, actions, 'board'));
+        const card = renderJobCard?.(j, actions, 'board');
+        
+        // Add assignment UI for masters on open jobs
+        if (card && isMaster?.()) {
+          renderAssignUI(card, j);
+        }
+        
+        list.appendChild(card);
       });
       status?.('jobsStatus','Loaded',true);
     } catch(e) {

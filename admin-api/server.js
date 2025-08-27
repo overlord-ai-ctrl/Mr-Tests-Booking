@@ -96,6 +96,24 @@ function isMaster(token) {
   }
 }
 
+// Helper to list all bookers
+function listBookers() {
+  try {
+    const tokens = readTokens();
+    return Object.entries(tokens)
+      .filter(([token, info]) => info?.role !== 'master')
+      .map(([token, info]) => ({
+        token,
+        name: info?.name || 'Admin',
+        coverage: Array.isArray(info?.coverage) ? info.coverage.map(normCentreId) : [],
+        availability: typeof info?.availability === 'boolean' ? info.availability : true,
+        role: info?.role || 'booker'
+      }));
+  } catch {
+    return [];
+  }
+}
+
 // Helper to get coverage for a token
 async function getCoverageForToken(token) {
   try {
@@ -1348,6 +1366,121 @@ app.post('/api/public/booking-request', async (req, res) => {
     
     res.json({ ok:true, booking_id: data.booking_id });
   } catch(e){ console.error(e); res.status(500).json({ error:'Server error' }); }
+});
+
+// Booker management endpoints
+app.get('/api/admins/bookers', auth, async (req, res) => {
+  try {
+    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
+    if (!isMaster(authToken)) {
+      return sendError(res, 403, 'forbidden', 'MASTER_REQUIRED', 'Only master admins can view bookers');
+    }
+    
+    const bookers = listBookers();
+    res.json({ bookers });
+  } catch (e) {
+    console.error('Get bookers error:', e);
+    sendError(res, 502, 'upstream_failed', 'BOOKERS_ERROR', 'Failed to get bookers');
+  }
+});
+
+app.get('/api/admins/bookers/:token/jobs', auth, async (req, res) => {
+  try {
+    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
+    if (!isMaster(authToken)) {
+      return sendError(res, 403, 'forbidden', 'MASTER_REQUIRED', 'Only master admins can view booker jobs');
+    }
+
+    const env = requireJobsEnv(res); 
+    if (!env) return;
+
+    const targetToken = req.params.token;
+    if (!targetToken) {
+      return sendError(res, 400, 'validation_error', 'TOKEN_REQUIRED', 'Booker token is required');
+    }
+
+    // Fetch jobs for this specific booker
+    const params = {
+      action: 'get_jobs',
+      assigned_to: targetToken,
+      limit: 100
+    };
+
+    const data = await jobsGet(params);
+    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+
+    res.json({ jobs });
+  } catch (e) {
+    console.error('Get booker jobs error:', e);
+    sendError(res, 502, 'upstream_failed', 'BOOKER_JOBS_ERROR', 'Failed to get booker jobs');
+  }
+});
+
+app.post('/api/jobs/assign', auth, async (req, res) => {
+  try {
+    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
+    if (!isMaster(authToken)) {
+      return sendError(res, 403, 'forbidden', 'MASTER_REQUIRED', 'Only master admins can assign jobs');
+    }
+
+    const env = requireJobsEnv(res); 
+    if (!env) return;
+
+    const { job_id, to_token } = req.body || {};
+    if (!job_id || !to_token) {
+      return sendError(res, 400, 'validation_error', 'REQUIRED_FIELDS', 'job_id and to_token are required');
+    }
+
+    // Validate the target booker exists and get their coverage
+    const bookers = listBookers();
+    const targetBooker = bookers.find(b => b.token === to_token);
+    if (!targetBooker) {
+      return sendError(res, 404, 'not_found', 'BOOKER_NOT_FOUND', 'Target booker not found');
+    }
+
+    // Fetch the job to validate its status and centre
+    const jobData = await jobsGet({ action: 'get_jobs', booking_id: job_id, limit: 1 });
+    const job = Array.isArray(jobData.jobs) && jobData.jobs.length > 0 ? jobData.jobs[0] : null;
+    
+    if (!job) {
+      return sendError(res, 404, 'not_found', 'JOB_NOT_FOUND', 'Job not found');
+    }
+
+    if (job.status !== 'open') {
+      return sendError(res, 400, 'invalid_state', 'JOB_NOT_OPEN', 'Job is not open for assignment');
+    }
+
+    // Check coverage match
+    const cidRaw = job.centre_id || job.centre_name || 
+      (job.desired_centres ? String(job.desired_centres).split(',')[0] : '');
+    const jobCentreId = normCentreId(cidRaw);
+    
+    if (jobCentreId && !targetBooker.coverage.includes(jobCentreId)) {
+      return sendError(res, 400, 'coverage_mismatch', 'COVERAGE_MISMATCH', 
+        `Booker does not cover centre: ${jobCentreId}`);
+    }
+
+    // Perform the assignment
+    const assignData = await jobsPost({
+      action: 'assign_to',
+      booking_id: job_id,
+      to_token,
+      actor: authToken
+    });
+
+    if (!assignData.ok) {
+      return sendError(res, 502, 'upstream_failed', 'ASSIGN_FAILED', 
+        assignData.error || 'Assignment failed');
+    }
+
+    // Bust caches
+    try { JobCache?.bust?.(); } catch {}
+
+    res.json({ ok: true, assigned_to: to_token });
+  } catch (e) {
+    console.error('Job assignment error:', e);
+    sendError(res, 502, 'upstream_failed', 'ASSIGN_ERROR', 'Failed to assign job');
+  }
 });
 
 // Onboarding endpoints
