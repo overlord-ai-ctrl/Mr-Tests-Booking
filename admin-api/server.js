@@ -65,6 +65,37 @@ function normCentreId(s) {
     .replace(/^-+|-+$/g, '');
 }
 
+// Token management helpers
+function readTokens() {
+  const fs = require('fs');
+  const path = require('path');
+  const p = path.join(process.cwd(), 'data', 'admin_tokens.json');
+  if (!fs.existsSync(p)) return {};
+  try { 
+    return JSON.parse(fs.readFileSync(p, 'utf8') || '{}'); 
+  } catch { 
+    return {}; 
+  }
+}
+
+function writeTokens(obj) {
+  const fs = require('fs');
+  const path = require('path');
+  const p = path.join(process.cwd(), 'data', 'admin_tokens.json');
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2));
+}
+
+// Helper to check if a token is master
+function isMaster(token) {
+  try {
+    const tokens = readTokens();
+    return tokens[token]?.role === 'master';
+  } catch {
+    return false;
+  }
+}
+
 // Helper to get coverage for a token
 async function getCoverageForToken(token) {
   try {
@@ -464,12 +495,20 @@ app.get("/api/me", auth, (req, res) => {
 app.get("/api/admin-codes", auth, requirePage("admins"), async (_req, res) => {
   try {
     const map = await loadAdminMap();
+    const tokens = readTokens(); // Get onboarding status
     const out = {};
     for (const [k, v] of Object.entries(map)) {
       const name = v?.name || 'Admin';
       const pages = Array.isArray(v?.pages) ? v.pages : pagesFromRole(v?.role || 'booker');
       const role = typeof v?.role === 'string' ? v.role : roleFromPages(pages);
-      out[k] = { name, pages, role };
+      const tokenInfo = tokens[k] || {};
+      out[k] = { 
+        name, 
+        pages, 
+        role,
+        onboarding_required: !!tokenInfo.onboarding_required,
+        onboarded_at: tokenInfo.onboarded_at || ''
+      };
     }
     res.json({ codes: out });
   } catch (e) {
@@ -1309,6 +1348,85 @@ app.post('/api/public/booking-request', async (req, res) => {
     
     res.json({ ok:true, booking_id: data.booking_id });
   } catch(e){ console.error(e); res.status(500).json({ error:'Server error' }); }
+});
+
+// Onboarding endpoints
+app.post('/api/admins/force-onboard', auth, async (req, res) => {
+  try {
+    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
+    if (!isMaster(authToken)) {
+      return sendError(res, 403, 'forbidden', 'MASTER_REQUIRED', 'Only master admins can force onboarding');
+    }
+    
+    const { token } = req.body || {};
+    if (!token) {
+      return sendError(res, 400, 'validation_error', 'TOKEN_REQUIRED', 'Token is required');
+    }
+
+    const tokens = readTokens();
+    if (!tokens[token]) {
+      return sendError(res, 404, 'not_found', 'UNKNOWN_TOKEN', 'Token not found');
+    }
+
+    tokens[token].onboarding_required = true;
+    tokens[token].onboarded_at = '';
+    writeTokens(tokens);
+
+    // Bust cache
+    try { JobCache?.bust?.(); } catch {}
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Force onboard error:', e);
+    sendError(res, 502, 'upstream_failed', 'FORCE_ONBOARD_ERROR', 'Failed to force onboarding');
+  }
+});
+
+app.get('/api/my-onboarding', auth, (req, res) => {
+  try {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
+    const tokens = readTokens();
+    const me = tokens[token] || {};
+    
+    res.json({
+      onboarding_required: !!me.onboarding_required,
+      name: me.name || '',
+      coverage: Array.isArray(me.coverage) ? me.coverage : [],
+      availability: typeof me.availability === 'boolean' ? me.availability : true
+    });
+  } catch (e) {
+    console.error('Get onboarding error:', e);
+    sendError(res, 502, 'upstream_failed', 'ONBOARDING_ERROR', 'Failed to get onboarding status');
+  }
+});
+
+app.post('/api/my-onboarding/complete', auth, async (req, res) => {
+  try {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
+    const { name, coverage, availability } = req.body || {};
+    
+    if (!name || !Array.isArray(coverage) || coverage.length === 0) {
+      return sendError(res, 400, 'validation_error', 'REQUIRED_FIELDS', 'Name and coverage are required');
+    }
+    
+    const tokens = readTokens();
+    tokens[token] = tokens[token] || {};
+    tokens[token].name = String(name).trim();
+    tokens[token].coverage = coverage.map(c => normCentreId(c)).filter(Boolean);
+    tokens[token].availability = !!availability;
+    tokens[token].onboarding_required = false;
+    tokens[token].onboarded_at = new Date().toISOString();
+    
+    writeTokens(tokens);
+
+    // Bust cache
+    try { JobCache?.bust?.(); } catch {}
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Complete onboarding error:', e);
+    sendError(res, 502, 'upstream_failed', 'COMPLETE_ONBOARD_ERROR', 'Failed to complete onboarding');
+  }
 });
 
 // Global error handler (must be last)
