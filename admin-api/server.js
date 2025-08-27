@@ -2,10 +2,18 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "node:fs";
 import { fileURLToPath } from "url";
 import { Octokit } from "@octokit/rest";
 import compression from "compression";
 import { z } from "zod";
+
+// ESM-safe path resolution
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Render cwd is already /opt/render/project/src 
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const TOKENS_PATH = path.join(DATA_DIR, 'admin_tokens.json');
 
 const {
   GITHUB_TOKEN,
@@ -65,25 +73,31 @@ function normCentreId(s) {
     .replace(/^-+|-+$/g, '');
 }
 
-// Token management helpers
+// Token management helpers - ESM-safe and robust
 function readTokens() {
-  const fs = require('fs');
-  const path = require('path');
-  const p = path.join(process.cwd(), 'data', 'admin_tokens.json');
-  if (!fs.existsSync(p)) return {};
-  try { 
-    return JSON.parse(fs.readFileSync(p, 'utf8') || '{}'); 
-  } catch { 
-    return {}; 
+  try {
+    if (!fs.existsSync(TOKENS_PATH)) {
+      console.warn('No tokens file found; returning empty object');
+      return {};
+    }
+    const raw = fs.readFileSync(TOKENS_PATH, 'utf8') || '{}';
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch (e) {
+    console.error('readTokens error:', e.message);
+    return {};
   }
 }
 
 function writeTokens(obj) {
-  const fs = require('fs');
-  const path = require('path');
-  const p = path.join(process.cwd(), 'data', 'admin_tokens.json');
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(obj, null, 2));
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(TOKENS_PATH, JSON.stringify(obj, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('writeTokens error:', e.message);
+    return false;
+  }
 }
 
 // Helper to check if a token is master
@@ -140,6 +154,21 @@ async function getCoverageForToken(token) {
       }
     } catch (e) {
       if (e.status !== 404) console.warn('Admin tokens read error:', e.message);
+    }
+
+    // Third try: local file system (for Render/production)
+    try {
+      const tokens = readTokens();
+      const tokenData = tokens[token];
+      if (tokenData && Array.isArray(tokenData.coverage)) {
+        return tokenData.coverage.map(normCentreId).filter(Boolean);
+      }
+      // Also check for 'centres' field (legacy support)
+      if (tokenData && Array.isArray(tokenData.centres)) {
+        return tokenData.centres.map(normCentreId).filter(Boolean);
+      }
+    } catch (e) {
+      console.warn('Local tokens read error:', e.message);
     }
     
     // Default: empty coverage
@@ -1483,6 +1512,19 @@ app.post('/api/jobs/assign', auth, async (req, res) => {
   }
 });
 
+// Debug endpoint for configuration checks
+app.get('/api/debug/env-lite', (req, res) => {
+  res.json({
+    ok: true,
+    has_JOBS_API_BASE: !!process.env.JOBS_API_BASE,
+    has_JOBS_API_SECRET: !!process.env.JOBS_API_SECRET,
+    data_dir: DATA_DIR,
+    tokens_path: TOKENS_PATH,
+    tokens_exists: fs.existsSync(TOKENS_PATH),
+    node_env: process.env.NODE_ENV || 'development'
+  });
+});
+
 // Onboarding endpoints
 app.post('/api/admins/force-onboard', auth, async (req, res) => {
   try {
@@ -1503,7 +1545,10 @@ app.post('/api/admins/force-onboard', auth, async (req, res) => {
 
     tokens[token].onboarding_required = true;
     tokens[token].onboarded_at = '';
-    writeTokens(tokens);
+    
+    if (!writeTokens(tokens)) {
+      return sendError(res, 502, 'write_failed', 'TOKEN_WRITE_ERROR', 'Failed to save token data');
+    }
 
     // Bust cache
     try { JobCache?.bust?.(); } catch {}
@@ -1550,7 +1595,9 @@ app.post('/api/my-onboarding/complete', auth, async (req, res) => {
     tokens[token].onboarding_required = false;
     tokens[token].onboarded_at = new Date().toISOString();
     
-    writeTokens(tokens);
+    if (!writeTokens(tokens)) {
+      return sendError(res, 502, 'write_failed', 'TOKEN_WRITE_ERROR', 'Failed to save token data');
+    }
 
     // Bust cache
     try { JobCache?.bust?.(); } catch {}
