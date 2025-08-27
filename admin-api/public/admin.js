@@ -24,6 +24,15 @@
   };
   const slug = (s) => s.toLowerCase().replace(/&/g,"and").replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
 
+  // Tab persistence
+  const TAB_KEY = 'activeTab';
+  function saveTab(k) { 
+    try { localStorage.setItem(TAB_KEY, k); } catch {} 
+  }
+  function loadTab() { 
+    try { return localStorage.getItem(TAB_KEY) || 'jobs'; } catch { return 'jobs'; } 
+  }
+
   // --- Toast helper ---
   function showToast(msg, type='info', timeout=1200) {
     const box = document.getElementById('toasty'); if (!box) return;
@@ -37,6 +46,37 @@
   // --- Debounce utility ---
   function debounce(fn, wait=300) {
     let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); };
+  }
+
+  // Empty states
+  function renderEmptyState(container, title, body, ctaText, ctaAction) {
+    const d = document.createElement('div'); 
+    d.className = 'emptystate';
+    d.innerHTML = `<div class="mb-1 fw-semibold">${title}</div><div class="mb-2">${body}</div>`;
+    if (ctaText) { 
+      const b = document.createElement('button'); 
+      b.className = 'btn btn-sm btn-outline-primary'; 
+      b.textContent = ctaText; 
+      b.onclick = ctaAction; 
+      d.appendChild(b); 
+    }
+    container.appendChild(d);
+  }
+
+  // Skeleton loaders
+  function showSkeletons(container, n = 5) { 
+    container.innerHTML = ''; 
+    for (let i = 0; i < n; i++) { 
+      const s = document.createElement('div'); 
+      s.className = 'skeleton-card'; 
+      container.appendChild(s); 
+    } 
+  }
+
+  // Date validation helper
+  function isFutureDateTime(d, t) { 
+    const dt = new Date(`${d}T${t}`); 
+    return dt.toString() !== 'Invalid Date' && dt.getTime() > Date.now(); 
   }
 
   // Keep one AbortController per loader to cancel in-flight fetches
@@ -82,6 +122,37 @@
     updateToggle();
     
     return { toggleMode, updateToggle };
+  })();
+
+  // Help panel management
+  const HelpPanel = (() => {
+    const panel = document.getElementById('helpPanel');
+    const toggle = document.getElementById('helpToggle');
+    const close = document.getElementById('helpClose');
+    
+    const show = () => {
+      panel?.classList.remove('d-none');
+    };
+    
+    const hide = () => {
+      panel?.classList.add('d-none');
+    };
+    
+    // Event handlers
+    toggle?.addEventListener('click', show);
+    close?.addEventListener('click', hide);
+    
+    // First-time user onboarding
+    const showOnboardingTip = () => {
+      if (!localStorage.getItem('helpSeen')) {
+        setTimeout(() => {
+          showToast('Tip: Claim a job, propose a test, then send to client.', 'info', 3000);
+          localStorage.setItem('helpSeen', '1');
+        }, 2000);
+      }
+    };
+    
+    return { show, hide, showOnboardingTip };
   })();
 
   // Action lock utility to prevent double-clicks
@@ -309,6 +380,9 @@
 
   function setActiveTab(key){
     console.log('Setting active tab:', key);
+    // Save tab state
+    saveTab(key);
+    
     // generic tab switcher that also loads data
     document.querySelectorAll('#nav .nav-link').forEach(a=>{
       const on = a.dataset.nav === key;
@@ -320,8 +394,15 @@
       p.hidden = !on;
       console.log(`Page ${pageKey}: ${on ? 'show' : 'hide'}`);
     });
-    // call loaders
-    if (key === 'jobs') loadJobs?.();
+    
+    // Focus search box on Find Jobs
+    if (key === 'jobs') {
+      loadJobs?.();
+      setTimeout(() => {
+        const searchBox = document.getElementById('jobsSearch');
+        searchBox?.focus();
+      }, 100);
+    }
     if (key === 'myjobs') loadMyJobs?.();
     if (key === 'profile') loadProfile?.();
     if (key === 'centres') loadCentres?.();
@@ -384,11 +465,14 @@
       loadProfileStats();
       if (typeof loadCodes === 'function' && isMaster()) loadCodes();
       
-      // Default landing for bookers: Jobs Board
+      // Default landing for bookers: Jobs Board (or restore last tab)
       if (!isMaster()) {
-        setActiveTab('jobs');
+        const preferredTab = loadTab();
+        setActiveTab(preferredTab);
         // Warm up My Jobs in background (optional)
         setTimeout(()=>loadMyJobs?.(), 300);
+        // Show onboarding tip for first-time users
+        HelpPanel.showOnboardingTip();
       }
     } catch (e) {
       console.error(e);
@@ -1008,7 +1092,7 @@
     const list = document.getElementById('jobsList');
     const q = (document.getElementById('jobsSearch')?.value || '').toLowerCase();
     
-    if (!prefetch && list) renderSkeletonList?.(list, 3);
+    if (!prefetch && list) showSkeletons(list, 3);
     if (!prefetch) status?.('jobsStatus','Loading…');
     
     try {
@@ -1034,9 +1118,9 @@
       
       if (!filteredJobs.length) {
         if (COVERAGE.size === 0) {
-          list.innerHTML = '<div class="placeholder">Set your preferred centres in Profile to see matching jobs.</div>';
+          renderEmptyState(list, 'No matching jobs yet', 'Add coverage centres in Profile or check back later.', 'Open Profile', () => setActiveTab('profile'));
         } else {
-          list.innerHTML = '<div class="placeholder">No open jobs in your coverage area.</div>';
+          renderEmptyState(list, 'No matching jobs yet', 'Add coverage centres in Profile or check back later.', 'Open Profile', () => setActiveTab('profile'));
         }
         status?.('jobsStatus','Loaded',true);
         return;
@@ -1077,7 +1161,7 @@
   async function loadMyJobs(prefetch = false) {
     if (!prefetch) showToast('Refreshing your jobs…');
     const list = document.getElementById('myJobsList');
-    if (!prefetch && list) renderSkeletonList?.(list, 2);
+    if (!prefetch && list) showSkeletons(list, 2);
     if (!prefetch) status?.('myJobsStatus','Loading…');
     try {
       const headers = { "Content-Type": "application/json" };
@@ -1090,7 +1174,7 @@
       
       list.innerHTML = '';
       if (!jobs.length) {
-        list.innerHTML = '<div class="placeholder">You have no jobs.</div>';
+        renderEmptyState(list, 'No claimed jobs', 'Claim a job from Find Jobs.', 'Find Jobs', () => setActiveTab('jobs'));
         document.getElementById('earnings').textContent = '';
         status?.('myJobsStatus','Loaded',true); return;
       }

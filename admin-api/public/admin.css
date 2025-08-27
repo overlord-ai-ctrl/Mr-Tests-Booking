@@ -854,3 +854,145 @@ body.dark .screen-busy-box {
 .d-none { 
   display: none !important; 
 }
+
+/* ===== UX INTUITION BUNDLE ===== */
+
+/* Empty states */
+.emptystate { 
+  border:1px dashed #e5e7eb; 
+  border-radius:12px; 
+  padding:16px; 
+  text-align:center; 
+  color:#6b7280; 
+}
+
+/* Skeleton loaders */
+.skeleton-card { 
+  border:1px solid #eef2f7; 
+  border-radius:12px; 
+  padding:14px; 
+  margin-bottom:10px; 
+  background:linear-gradient(90deg,#f3f4f6 25%,#eceff3 37%,#f3f4f6 63%); 
+  background-size:400% 100%; 
+  animation:shimmer 1.2s infinite; 
+  height:86px; 
+}
+
+@keyframes shimmer { 
+  0%{background-position:-200% 0} 
+  100%{background-position:200% 0} 
+}
+
+/* Chips and badges */
+.chip { 
+  display:inline-block; 
+  background:#eef2ff; 
+  color:#1d4ed8; 
+  border-radius:999px; 
+  padding:2px 8px; 
+  font-size:.8rem; 
+  margin-right:6px; 
+}
+
+.badge-status { 
+  font-weight:600; 
+  border-radius:999px; 
+  padding:2px 8px; 
+}
+
+.badge-open { 
+  background:#eff6ff; 
+  color:#1d4ed8; 
+}
+
+.badge-claimed { 
+  background:#f0fdf4; 
+  color:#166534; 
+}
+
+.badge-offered { 
+  background:#fff7ed; 
+  color:#9a3412; 
+}
+
+.badge-expired { 
+  background:#fef2f2; 
+  color:#b91c1c; 
+}
+
+.badge-confirmed { 
+  background:#ecfdf5; 
+  color:#065f46; 
+}
+
+/* Sticky offer actions */
+.offer-actions { 
+  position: sticky; 
+  bottom: 0; 
+  background:#fff; 
+  padding-top:8px; 
+  margin-top:8px; 
+  border-top:1px solid #eef2f7; 
+}
+
+body.dark .offer-actions {
+  background: #1a1f2e;
+  border-top-color: #4a5568;
+}
+
+/* Help panel */
+.help-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 280px;
+  background: #fff;
+  border: 1px solid #e0e6ed;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(1,41,112,0.15);
+  z-index: 1050;
+}
+
+body.dark .help-panel {
+  background: #1a1f2e;
+  border-color: #2d3748;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+}
+
+.help-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.help-steps li {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+/* Job card improvements */
+.job-card .candidate-name {
+  font-weight: 600;
+  color: #012970;
+}
+
+body.dark .job-card .candidate-name {
+  color: #e2e8f0;
+}
+
+.job-card .muted-info {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+/* Validation hints */
+.validation-hint {
+  font-size: 0.75rem;
+  color: #dc3545;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.validation-hint.valid {
+  color: #198754;
+}

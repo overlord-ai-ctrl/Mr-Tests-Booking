@@ -18,6 +18,7 @@
           <span class="badge text-bg-primary" id="userRole" style="display:none"></span>
           <span id="userName" class="fw-semibold"></span>
         </div>
+        <button id="helpToggle" class="btn btn-sm btn-outline-secondary me-2" title="Show help">?</button>
         <button id="darkModeToggle" class="btn btn-sm btn-outline-secondary" title="Toggle dark mode">🌙</button>
       </div>
     </header>
@@ -48,8 +49,8 @@
       <ul id="nav" class="nav nav-tabs mb-3" hidden>
         <li class="nav-item"><a class="nav-link active" data-nav="centres" href="#"><i class="bi bi-geo-alt me-2" aria-hidden="true"></i>Centres</a></li>
         <li class="nav-item"><a class="nav-link" data-nav="profile" href="#"><i class="bi bi-person-circle me-2" aria-hidden="true"></i>Profile</a></li>
-        <li class="nav-item"><a class="nav-link" data-nav="jobs" href="#"><i class="bi bi-briefcase me-2" aria-hidden="true"></i>Jobs Board</a></li>
-        <li class="nav-item"><a class="nav-link" data-nav="myjobs" href="#"><i class="bi bi-list-check me-2" aria-hidden="true"></i>My Jobs</a></li>
+        <li class="nav-item"><a class="nav-link" data-nav="jobs" href="#"><i class="bi bi-briefcase me-2" aria-hidden="true"></i>Find Jobs</a></li>
+        <li class="nav-item"><a class="nav-link" data-nav="myjobs" href="#"><i class="bi bi-list-check me-2" aria-hidden="true"></i>My Claimed Jobs</a></li>
         <li class="nav-item"><a class="nav-link" data-nav="admins" href="#"><i class="bi bi-shield-lock me-2" aria-hidden="true"></i>Admin Codes</a></li>
       </ul>
 
@@ -94,6 +95,7 @@
       </section>
 
       <section class="panel card p-3 p-md-4 mb-3" data-page="profile" hidden>
+        <p class="text-muted mb-3"><small>Set your name and coverage so matching jobs appear.</small></p>
         <div class="profile-header">
           <div>
             <div class="profile-name" id="profileName">—</div>
@@ -157,8 +159,9 @@
       </section>
 
       <section class="panel card p-3 p-md-4 mb-3" data-page="jobs" hidden>
+        <p class="text-muted mb-3"><small>Claim a job that matches your centres. Details unlock after you claim.</small></p>
         <div class="d-flex align-items-center justify-content-between mb-2">
-          <h2 class="h5 mb-0">Jobs Board</h2>
+          <h2 class="h5 mb-0">Find Jobs</h2>
           <div class="text-end">
             <span id="jobsStatus" class="form-text"></span>
           </div>
@@ -177,8 +180,9 @@
       </section>
 
       <section class="panel card p-3 p-md-4 mb-3" data-page="myjobs" hidden>
+        <p class="text-muted mb-3"><small>Propose a test, message the client, then mark as completed.</small></p>
         <div class="d-flex align-items-center justify-content-between mb-2">
-          <h2 class="h5 mb-0">My Jobs</h2>
+          <h2 class="h5 mb-0">My Claimed Jobs</h2>
           <span id="myJobsStatus" class="form-text"></span>
         </div>
         <div id="myJobsList" class="list"></div>
@@ -195,6 +199,21 @@
     <div class="screen-busy-box">
       <div class="spinner-border" role="status" aria-hidden="true"></div>
       <div id="screenBusyText" class="mt-2 fw-semibold">Working…</div>
+    </div>
+  </div>
+
+  <!-- Help panel -->
+  <div id="helpPanel" class="help-panel d-none">
+    <div class="help-content">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">Quick Start Guide</h6>
+        <button id="helpClose" class="btn btn-sm btn-outline-secondary">×</button>
+      </div>
+      <ol class="help-steps">
+        <li>Claim a job that matches your centres</li>
+        <li>Propose a test & message the client</li>
+        <li>When client confirms, complete the job</li>
+      </ol>
     </div>
   </div>
 
