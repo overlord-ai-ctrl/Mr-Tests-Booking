@@ -1,0 +1,14 @@
+{
+  "name": "mr-tests-booking",
+  "type": "module",
+  "scripts": {
+    "format": "prettier --write \"**/*.{js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{js,json,md}\"",
+    "lint": "eslint \"**/*.js\"",
+    "lint:fix": "eslint \"**/*.js\" --fix"
+  },
+  "devDependencies": {
+    "eslint": "^9.34.0",
+    "prettier": "^3.6.2"
+  }
+}
