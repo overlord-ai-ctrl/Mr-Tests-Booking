@@ -133,5 +133,22 @@
         "slough"
       ]
     }
+  },
+  {
+    "timestamp": "2025-08-28T11:20:30.426Z",
+    "actor": "Admin",
+    "action": "centres.append",
+    "target": "test_centres.json",
+    "beforeSha": "405dc851b766106a0b620473d0186df90b9bb302",
+    "afterSha": null,
+    "details": {
+      "centres": [
+        {
+          "id": "oio",
+          "name": "oio",
+          "deleted": false
+        }
+      ]
+    }
   }
 ]
