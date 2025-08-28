@@ -34,14 +34,13 @@
       </div>
     </header>
 
-    <!-- Unlock UI -->
+    <!-- Unlock panel -->
     <div id="unlockPanel" class="card p-3 mb-3">
       <div class="d-flex gap-2">
-        <input id="unlockCode" class="form-control" placeholder="Enter admin code"/>
+        <input id="unlockCode" class="form-control" placeholder="Enter admin code" autocomplete="off" />
         <button id="btnUnlock" class="btn btn-primary">Unlock</button>
-        <button id="btnTheme" class="btn btn-light" type="button">🌓</button>
-        <button id="btnHelp" class="btn btn-outline-info" type="button">?</button>
       </div>
+      <small id="unlockStatus" class="text-muted d-block mt-2"></small>
     </div>
 
     <!-- App (hidden until authed) -->
@@ -257,7 +256,8 @@
     </div>
   </div>
 
-  <script src="/admin/admin.js?v=hardreset" defer></script>
+  <!-- Load script (cache-bust) -->
+  <script src="/admin.js?v=unlock-fix" defer></script>
   <script>
     // Register service worker
     if ('serviceWorker' in navigator) {

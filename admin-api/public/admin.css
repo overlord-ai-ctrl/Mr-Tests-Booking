@@ -1176,3 +1176,7 @@ body.dark .booker-section h6 {
 #errBar { position: sticky; top: 0; z-index: 1000; }
 
 .nav .nav-link.active { font-weight: 600; }
+
+/* Unlock status styling */
+#unlockStatus.error { color: #b91c1c; }   /* red */
+#unlockStatus.ok { color: #065f46; }      /* green */

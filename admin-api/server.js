@@ -254,21 +254,26 @@ function normCentreId(s) {
 
 // Token management helpers - using safe IO functions
 function readTokens() {
-  return readJson(TOKENS_PATH, {});
+  try { 
+    return fs.existsSync(TOKENS_PATH) ? JSON.parse(fs.readFileSync(TOKENS_PATH,'utf8')||'{}') : {}; 
+  } catch { 
+    return {}; 
+  }
 }
 
 function writeTokens(obj) {
   return writeJson(TOKENS_PATH, obj);
 }
 
-// Standardized role detection functions
-function getRoleByToken(token) {
-  const t = String(token || '').trim();
-  const tokens = readTokens();
-  const role = tokens?.[t]?.role || (t === '1212' ? 'master' : 'booker'); // fallback
-  const name = tokens?.[t]?.name || (t === '1212' ? 'George' : '');
+function getRoleByToken(tokenRaw){
+  const token = String(tokenRaw||'').trim();
+  const rec = readTokens()?.[token] || {};
+  const role = rec.role || (token === '1212' ? 'master' : 'booker'); // fallback
+  const name = rec.name || (token === '1212' ? 'George' : '');
   return { role, name };
 }
+
+
 
 function isMasterReq(req) {
   const t = String(req.adminToken || '').trim();
@@ -958,11 +963,9 @@ function requirePage(tag) {
 // Health
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-// Who am I (keep, but uses async auth now)
-app.get('/api/me', auth, (req, res) => {
-  const t = String(req.adminToken || '').trim();
-  const { role, name } = getRoleByToken(t);
-  res.json({ token: t, role, name });
+app.get('/api/me', auth, (req,res)=>{
+  const { role, name } = getRoleByToken(req.adminToken);
+  res.json({ token: req.adminToken, role, name });
 });
 
 // NEW: Admin Codes endpoints
@@ -2075,7 +2078,7 @@ app.post('/api/public/booking-request', async (req, res) => {
 
     // Add to open index immediately
     const job = {
-      id: data.booking_id || genId(),
+      id: data.booking_id || `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       candidate: booking['Student Name'] || booking.student_name || '',
       phone: booking.Phone || booking.phone || '',
       licence_number: booking['Licence Number'] || booking.licence_number || '',
