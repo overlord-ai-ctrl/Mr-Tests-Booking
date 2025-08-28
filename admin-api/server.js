@@ -2286,6 +2286,74 @@ app.get('/api/debug/env-lite', (req, res) => {
   });
 });
 
+// Initialize admin tokens if they don't exist
+app.post('/api/debug/init-tokens', (req, res) => {
+  if (fs.existsSync(TOKENS_PATH)) {
+    return res.json({ ok: true, message: 'Tokens already exist' });
+  }
+  
+  const defaultTokens = {
+    "1212": {
+      "role": "master",
+      "name": "George",
+      "coverage": ["london-mill-hill", "slough"],
+      "availability": true,
+      "onboarding_required": false,
+      "onboarded_at": "",
+      "pages": ["centres", "admins"],
+      "notes": "",
+      "maxDaily": 10,
+      "available": true,
+      "centres": ["london-mill-hill", "slough"]
+    },
+    "1231": {
+      "role": "booker",
+      "name": "Nicola",
+      "coverage": [],
+      "availability": true,
+      "onboarding_required": false,
+      "onboarded_at": "",
+      "pages": ["centres"]
+    },
+    "1232": {
+      "role": "booker",
+      "name": "Racheal",
+      "coverage": ["london-mill-hill", "slough"],
+      "availability": true,
+      "onboarding_required": false,
+      "onboarded_at": "",
+      "pages": ["centres"],
+      "centres": ["london-mill-hill", "slough"]
+    },
+    "1234": {
+      "role": "booker",
+      "name": "Rayhanna",
+      "coverage": ["london-mill-hill", "slough"],
+      "availability": true,
+      "onboarding_required": false,
+      "onboarded_at": "",
+      "pages": ["centres"],
+      "centres": ["london-mill-hill", "slough"]
+    },
+    "2222": {
+      "role": "master",
+      "name": "Preston",
+      "coverage": [],
+      "availability": true,
+      "onboarding_required": false,
+      "onboarded_at": "",
+      "pages": ["*"]
+    }
+  };
+  
+  try {
+    fs.writeFileSync(TOKENS_PATH, JSON.stringify(defaultTokens, null, 2));
+    res.json({ ok: true, message: 'Admin tokens initialized successfully' });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 // Debug endpoints for local index inspection
 app.get('/api/debug/open-jobs', (req, res) => {
   res.json(readJson(OPEN_JOBS_PATH, { jobs: [], updated_at: 0 }));
