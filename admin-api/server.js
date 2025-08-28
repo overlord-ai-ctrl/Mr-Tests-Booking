@@ -18,10 +18,37 @@ import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
 import compression from 'compression';
 import { z } from 'zod';
-import createError from 'http-errors';
-import morgan from 'morgan';
-import winston from 'winston';
-import expressStatusMonitor from 'express-status-monitor';
+
+// Optional dependencies - load conditionally
+let createError, morgan, winston, expressStatusMonitor;
+
+try {
+  const createErrorModule = await import('http-errors');
+  createError = createErrorModule.default;
+} catch (e) {
+  console.log('http-errors not available, using fallback error handling');
+}
+
+try {
+  const morganModule = await import('morgan');
+  morgan = morganModule.default;
+} catch (e) {
+  console.log('morgan not available, skipping request logging');
+}
+
+try {
+  const winstonModule = await import('winston');
+  winston = winstonModule.default;
+} catch (e) {
+  console.log('winston not available, using console logging');
+}
+
+try {
+  const statusMonitorModule = await import('express-status-monitor');
+  expressStatusMonitor = statusMonitorModule.default;
+} catch (e) {
+  console.log('express-status-monitor not available, skipping status monitor');
+}
 
 // ESM-safe path resolution
 const __filename = fileURLToPath(import.meta.url);
@@ -30,20 +57,30 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const TOKENS_PATH = path.join(DATA_DIR, 'admin_tokens.json');
 
-// Configure Winston logger
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
-    }),
-  ],
-});
+// Configure logger (Winston if available, otherwise console)
+let logger;
+if (winston) {
+  logger = winston.createLogger({
+    level: process.env.LOG_LEVEL || 'info',
+    format: winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.errors({ stack: true }),
+      winston.format.json()
+    ),
+    transports: [
+      new winston.transports.Console({
+        format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
+      }),
+    ],
+  });
+} else {
+  // Fallback to console logging
+  logger = {
+    info: (msg, meta) => console.log('INFO:', msg, meta ? JSON.stringify(meta) : ''),
+    error: (msg, meta) => console.error('ERROR:', msg, meta ? JSON.stringify(meta) : ''),
+    warn: (msg, meta) => console.warn('WARN:', msg, meta ? JSON.stringify(meta) : ''),
+  };
+}
 
 function logError(err) {
   logger.error(err);
@@ -426,8 +463,8 @@ function handleError(err, req, res, next) {
 
 const app = express();
 
-// Status monitoring dashboard (only in development)
-if (process.env.NODE_ENV !== 'production') {
+// Status monitoring dashboard (only in development and if available)
+if (process.env.NODE_ENV !== 'production' && expressStatusMonitor) {
   app.use(
     expressStatusMonitor({
       title: 'Mr Tests Admin API Status',
@@ -444,8 +481,10 @@ if (process.env.NODE_ENV !== 'production') {
   );
 }
 
-// Request logging
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+// Request logging (if morgan is available)
+if (morgan) {
+  app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+}
 
 // Compression middleware
 app.use(compression());
