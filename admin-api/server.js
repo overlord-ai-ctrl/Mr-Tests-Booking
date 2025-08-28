@@ -665,7 +665,7 @@ app.use(compression());
 app.use(cors(CORS_ORIGIN ? { origin: CORS_ORIGIN } : {}));
 app.use(express.json({ limit: '256kb' }));
 
-// Health endpoints
+// Public endpoints (no auth required)
 app.get('/health', (req, res) => {
   res.json({
     ok: true,
@@ -675,6 +675,10 @@ app.get('/health', (req, res) => {
     memory: process.memoryUsage(),
     version: process.version,
   });
+});
+
+app.get('/api/ping', (req, res) => {
+  res.json({ ok: true, ts: Date.now() });
 });
 
 // Debug endpoint (only in development)
@@ -759,10 +763,7 @@ app.get('/admin', (_req, res) => {
 });
 app.get('/', (_req, res) => res.redirect('/admin'));
 
-// Health check endpoints
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, time: new Date().toISOString() });
-});
+
 
 app.get('/health/deps', async (_req, res) => {
   try {
@@ -960,8 +961,7 @@ function requirePage(tag) {
   };
 }
 
-// Health
-app.get('/health', (_req, res) => res.json({ ok: true }));
+
 
 app.get('/api/me', auth, (req,res)=>{
   const { role, name } = getRoleByToken(req.adminToken);
