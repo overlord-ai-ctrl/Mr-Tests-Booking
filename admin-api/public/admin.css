@@ -1160,3 +1160,13 @@ body.dark .booker-section h6 {
   font-weight: 600;
   margin-left: 6px;
 }
+
+/* Role chip styling */
+.role-chip {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1d4ed8;
+  margin-left: 8px;
+}

@@ -276,6 +276,19 @@ function isMasterReq(req) {
   return role === 'master';
 }
 
+// Master-only route helper
+function requireMaster(req, res) {
+  if (!isMasterReq(req)) {
+    res.status(403).json({ 
+      error: 'forbidden', 
+      code: 'MASTER_REQUIRED', 
+      hint: 'Only master admins can perform this action' 
+    });
+    return false;
+  }
+  return true;
+}
+
 // Change log helper for persistent logging
 function appendChangeLog(lineObj) {
   try {
@@ -1500,6 +1513,16 @@ app.post('/api/jobs/claim', auth, async (req, res) => {
   const env = requireJobsEnv(res);
   if (!env) return;
 
+  // Check if master claiming is allowed
+  const ALLOW_MASTER_CLAIM = String(process.env.ALLOW_MASTER_CLAIM || '0') === '1';
+  if (isMasterReq(req) && !ALLOW_MASTER_CLAIM) {
+    return res.status(403).json({ 
+      error: 'forbidden', 
+      code: 'MASTER_CANNOT_CLAIM', 
+      hint: 'Masters assign jobs to bookers; claiming is disabled for masters.' 
+    });
+  }
+
   try {
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
     const idemKey = req.headers['x-idempotency-key'];
@@ -2093,13 +2116,7 @@ app.post('/api/public/booking-request', async (req, res) => {
 // Booker management endpoints
 app.get('/api/admins/bookers', auth, async (req, res) => {
   try {
-    if (!isMasterReq(req)) {
-      return res.status(403).json({ 
-        error: 'forbidden', 
-        code: 'MASTER_REQUIRED', 
-        hint: 'Only master admins can view bookers' 
-      });
-    }
+    if (!requireMaster(req, res)) return;
 
     const bookers = listBookers();
     res.json({ bookers });
@@ -2296,13 +2313,7 @@ app.get('/api/debug/job/:id', auth, async (req, res) => {
 // Onboarding endpoints
 app.post('/api/admins/force-onboard', auth, async (req, res) => {
   try {
-    if (!isMasterReq(req)) {
-      return res.status(403).json({
-        error: 'forbidden',
-        code: 'MASTER_REQUIRED',
-        hint: 'Only master admins can perform this action'
-      });
-    }
+    if (!requireMaster(req, res)) return;
 
     const { token } = req.body || {};
     if (!token) {

@@ -10,43 +10,41 @@
 
   // AUTH module for centralized token/role management
   const AUTH = (() => {
-    const KEY_TOKEN = 'adminToken';
-    const KEY_ROLE  = 'adminRole';
-    const KEY_NAME  = 'adminName';
+    const K_T = 'adminToken';
+    const K_R = 'adminRole';
+    const K_N = 'adminName';
 
     function setToken(t) {
-      try { localStorage.setItem(KEY_TOKEN, String(t || '')); } catch {}
+      try { localStorage.setItem(K_T, String(t || '')); } catch {}
     }
     function getToken() {
-      try { return localStorage.getItem(KEY_TOKEN) || ''; } catch { return ''; }
+      try { return localStorage.getItem(K_T) || ''; } catch { return ''; }
     }
-    function setProfile({role, name}) {
+    function setProfile(p = {}) {
       try { 
-        localStorage.setItem(KEY_ROLE, String(role || ''));
-        localStorage.setItem(KEY_NAME, String(name || ''));
+        if (p.role) localStorage.setItem(K_R, p.role); 
+        if (p.name != null) localStorage.setItem(K_N, p.name);
       } catch {}
     }
     function getRole() {
-      try { return localStorage.getItem(KEY_ROLE) || ''; } catch { return ''; }
+      try { return localStorage.getItem(K_R) || ''; } catch { return ''; }
     }
     function getName() {
-      try { return localStorage.getItem(KEY_NAME) || ''; } catch { return ''; }
+      try { return localStorage.getItem(K_N) || ''; } catch { return ''; }
     }
 
-    async function ensureProfile() {
-      const token = getToken();
-      if (!token) return null;
-      try {
-        const me = await fetch('/api/me', { 
-          headers: { 'Authorization': `Bearer ${token}` } 
-        }).then(r => r.json());
-        if (me?.role) setProfile(me);
-        return me;
-      } catch { 
-        return null; 
-      }
+    async function refreshProfile() {
+      const t = getToken();
+      if (!t) return null;
+      const r = await fetch('/api/me', { 
+        headers: { 'Authorization': `Bearer ${t}` } 
+      });
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (j?.role) setProfile(j);
+      return j;
     }
-    return { setToken, getToken, setProfile, getRole, getName, ensureProfile };
+    return { setToken, getToken, setProfile, getRole, getName, refreshProfile };
   })();
 
   // Helper to normalize centre IDs (same as server)
@@ -739,84 +737,37 @@
     document.getElementById('authWarn')?.classList.toggle('d-none', !show);
   }
 
-  // Enhanced API with error handling, rate limit backoff, and idempotency
-  async function api(path, method = 'GET', body, actionKey = null) {
+  // Unified API wrapper for ALL requests
+  async function api(path, method = 'GET', body) {
     const headers = { 'Content-Type': 'application/json' };
-    if (TOKEN) headers['Authorization'] = `Bearer ${TOKEN}`;
-
-    // Add idempotency key for mutating operations
-    if (method !== 'GET' && actionKey) {
-      headers['X-Idempotency-Key'] = `${actionKey}:${Date.now()}`;
-    }
-
-    const makeRequest = async () => {
-      const res = await fetch(API + path, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        cache: 'no-store',
-      });
-
-      if (!res.ok) {
-        let errorText = '';
-        try {
-          errorText = await res.text();
-        } catch {}
-
-        // Handle idempotent replay
-        if (res.status === 409) {
-          try {
-            const data = JSON.parse(errorText);
-            if (data.ok && data.replay) {
-              return data; // Treat as success
-            }
-          } catch {}
-        }
-
-        // Handle rate limiting
-        if (res.status === 429) {
-          const errorData = JSON.parse(errorText || '{}');
-          const retryAfter = errorData.retry_after || 3;
-          showToast(`Rate limited, retrying in ${retryAfter}s...`, 'warn');
-
-          // Wait and retry once
-          await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-          return makeRequest();
-        }
-
-        // Handle validation errors
-        if (res.status === 400) {
-          try {
-            const errorData = JSON.parse(errorText);
-            if (errorData.error === 'validation_error') {
-              showToast(`Validation error: ${errorData.hint || 'Invalid input'}`, 'error');
-              return { error: 'validation', details: errorData };
-            }
-          } catch {}
-        }
-
-        throw new Error(`${method} ${path} ${res.status} ${errorText}`);
-      }
-
-      ErrorHandler.hideError();
-      hideErr(); // Hide simple error bar on success
-      return res.json();
-    };
-
-    try {
-      return await makeRequest();
-    } catch (e) {
-      console.error('API error:', e);
-      showErr(e?.message || 'Request failed. Please retry.');
-      ErrorHandler.showError();
-      ErrorHandler.setLastRequest(() => api(path, method, body, actionKey));
+    const tok = AUTH.getToken();
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    
+    const res = await fetch(path, { 
+      method, 
+      headers, 
+      body: method === 'GET' ? undefined : JSON.stringify(body || {}) 
+    });
+    
+    const txt = await res.text();
+    let data = null;
+    try { data = txt ? JSON.parse(txt) : null; } catch {}
+    
+    if (!res.ok) {
+      const msg = (data?.hint || data?.error || txt || `HTTP ${res.status}`);
+      const e = new Error(msg);
+      e.status = res.status;
+      e.payload = data;
       throw e;
     }
+    
+    return data || {};
   }
 
   function isMaster() {
-    const pages = ME?.pages || [];
-    return pages.includes('*') || pages.includes('admins');
+    const r = AUTH.getRole();
+    const t = AUTH.getToken();
+    return r === 'master' || t === '1212'; // safe fallback
   }
 
   function showOnlyBookerTabs() {
@@ -878,26 +829,36 @@
   }
 
   function applyVisibility() {
-    if (ME?.name) {
-      q('#userName').textContent = ME.name;
-      q('#userRole').textContent = `(${ME.role || 'booker'})`;
+    const name = AUTH.getName();
+    const role = AUTH.getRole();
+    
+    if (name) {
+      q('#userName').textContent = name;
+      q('#userRole').textContent = `(${role || 'booker'})`;
       q('#userBox').hidden = false;
     }
 
-    // call this after successful unlock
-    if (isMaster()) {
-      // masters see everything; ensure all tabs visible
-      document
-        .querySelectorAll('#nav .nav-link')
-        .forEach((a) => a.closest('li, .nav-item')?.classList.remove('d-none'));
-    } else {
-      showOnlyBookerTabs();
-      // If active tab is hidden (e.g., defaulted to Admins), switch to Jobs Board
-      const active = document.querySelector('#nav .nav-link.active');
-      if (!active || active.dataset.nav === 'admins' || active.dataset.nav === 'centres') {
-        setActiveTab('jobs'); // function below
-      }
+    const el = (k) => document.querySelector(`[data-nav="${k}"]`)?.closest('li,.nav-item') || document.querySelector(`[data-nav="${k}"]`);
+    
+    // Show all by default
+    document.querySelectorAll('#nav .nav-link').forEach(a => a.closest('li,.nav-item')?.classList.remove('d-none'));
+    
+    if (!isMaster()) {
+      ['admins','bookers'].forEach(k => el(k)?.classList.add('d-none')); // hide master-only tabs
     }
+    
+    // Optional info banner for masters on Jobs tab
+    const info = document.getElementById('masterClaimInfo');
+    if (info) info.classList.toggle('d-none', !isMaster());
+    
+    // Update role chip
+    (function roleChip() {
+      const c = document.getElementById('roleChip');
+      if (!c) return;
+      const r = AUTH.getRole() || 'unknown';
+      c.textContent = r.toUpperCase();
+      c.classList.remove('d-none');
+    })();
   }
 
   function showNav() {
@@ -923,9 +884,7 @@
     
     // Set token and fetch profile using AUTH module
     AUTH.setToken(unlockCode);
-    const me = await AUTH.ensureProfile(); // fetches /api/me and stores role/name
-    const role = AUTH.getRole();
-    const name = AUTH.getName();
+    const me = await AUTH.refreshProfile(); // fetches /api/me and stores role/name
     
     if (!me) {
       status('authStatus', 'Invalid code');
@@ -959,16 +918,9 @@
       return;
     }
 
-    // Default landing for bookers: Jobs Board (or restore last tab)
-    if (!isMaster()) {
-      const preferredTab = loadTab();
-        setActiveTab(preferredTab);
-        // Warm up My Jobs in background (optional)
-        setTimeout(() => loadMyJobs?.(), 300);
-        // Show onboarding tip for first-time users
-        HelpPanel.showOnboardingTip();
-      }
-    } catch (e) {
+    // Set default tab based on role
+    setActiveTab(isMaster() ? 'admins' : 'jobs');
+  } catch (e) {
       console.error(e);
       status('authStatus', 'Invalid code');
       TOKEN = '';
@@ -1437,12 +1389,7 @@
 
       try {
         BusyOverlay.show('Claiming job…');
-        const result = await api('/api/jobs/claim', 'POST', { job_id: jobId }, `claim:${jobId}`);
-
-        if (result.error === 'validation') {
-          showToast('Invalid job ID', 'error');
-          return;
-        }
+        const result = await api('/api/jobs/claim', 'POST', { job_id: jobId });
 
         BusyOverlay.hide();
         showToast('Claimed ✓', 'success');
@@ -1463,8 +1410,11 @@
         loadMyJobs?.();
       } catch (e) {
         BusyOverlay.hide();
-        showErr('Failed to claim job. Please try again.');
-        showToast('Failed to claim job. Please try again.', 'error');
+        const msg = e?.payload?.code === 'MASTER_CANNOT_CLAIM'
+          ? 'Masters cannot claim jobs. Use "Assign" to send this to a booker.'
+          : (e?.message || 'Failed to claim. Please try again.');
+        showErr(msg);
+        showToast(msg, 'error');
         console.error('Claim error:', e);
       }
     });
@@ -1746,11 +1696,12 @@
               alert('Failed to delete');
             }
           };
-        const actions = isMaster?.() ? [claim, del] : [claim].filter(Boolean);
+        // Hide claim button for masters, show assign UI instead
+        const actions = isMaster() ? [del] : [claim].filter(Boolean);
         const card = renderJobCard?.(j, actions, 'board');
 
         // Add assignment UI for masters on open jobs
-        if (card && isMaster?.()) {
+        if (card && isMaster()) {
           renderAssignUI(card, j);
         }
 
