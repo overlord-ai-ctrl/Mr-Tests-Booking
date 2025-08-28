@@ -44,9 +44,13 @@ function applyVisibility(){
 }
 
 function setActiveTab(key){
-  document.querySelectorAll('.page').forEach(p=>p.classList.add('d-none'));
+  console.log('[tab]', key);
+  // Hide all pages using [data-page] attribute
+  document.querySelectorAll('[data-page]').forEach(p=>p.classList.add('d-none'));
+  // Remove active from all nav links
   document.querySelectorAll('#nav .nav-link').forEach(a=>a.classList.remove('active'));
-  document.getElementById(key)?.classList.remove('d-none');
+  // Show selected page and activate nav link
+  document.querySelector(`[data-page="${key}"]`)?.classList.remove('d-none');
   document.querySelector(`#nav .nav-link[data-nav="${key}"]`)?.classList.add('active');
   try{ localStorage.setItem('activeTab', key); }catch{}
 }
@@ -83,7 +87,7 @@ async function onUnlock(){
     }
     
     applyVisibility();
-    setActiveTab(localStorage.getItem('activeTab') || 'jobs');
+    setActiveTab('jobs');
     // Kick data loads if the functions exist (don't add new features)
     if (typeof loadProfile==='function')  loadProfile();
     if (typeof loadCentres==='function')  loadCentres();
@@ -119,22 +123,8 @@ function wireNav(){
 function boot(){
   wireChrome();
   wireNav();
-  // show last tab or a safe default (centres is static)
-  setActiveTab(localStorage.getItem('activeTab') || 'centres');
-  // If a token exists from earlier, try to quietly rehydrate AFTER UI is visible
-  if (AUTH.token()){
-    AUTH.me().then(()=>{ 
-      applyVisibility(); 
-      if (typeof loadProfile==='function') loadProfile(); 
-      // Hide unlock panel and show app if we have a valid token
-      const unlockPanel = document.getElementById('unlockPanel');
-      if (unlockPanel) unlockPanel.style.display = 'none';
-      const app = document.getElementById('app');
-      if (app) app.hidden = false;
-    })
-             .catch(()=>{ /* ignore, user can re-unlock */ });
-  }
-  console.log('[admin] restored UI boot ok');
+  // Show unlock panel by default - no auto-unlock
+  console.log('[admin] boot complete - unlock required');
 }
 if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 
