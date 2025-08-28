@@ -418,21 +418,23 @@ function handleError(err, req, res, next) {
 
 const app = express();
 
-// Status monitoring dashboard
-app.use(
-  expressStatusMonitor({
-    title: 'Mr Tests Admin API Status',
-    path: '/status',
-    healthChecks: [
-      {
-        protocol: 'http',
-        host: 'localhost',
-        path: '/health',
-        port: process.env.PORT || 3000,
-      },
-    ],
-  })
-);
+// Status monitoring dashboard (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  app.use(
+    expressStatusMonitor({
+      title: 'Mr Tests Admin API Status',
+      path: '/status',
+      healthChecks: [
+        {
+          protocol: 'http',
+          host: 'localhost',
+          path: '/health',
+          port: process.env.PORT || 3000,
+        },
+      ],
+    })
+  );
+}
 
 // Request logging
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
@@ -456,6 +458,21 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug endpoint (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/api/debug/env', (req, res) => {
+    res.json({
+      nodeEnv: process.env.NODE_ENV,
+      hasJobsApiBase: !!process.env.JOBS_API_BASE,
+      hasJobsApiSecret: !!process.env.JOBS_API_SECRET,
+      hasGitHubToken: !!process.env.GITHUB_TOKEN,
+      port: process.env.PORT,
+      dataDir: DATA_DIR,
+      tokensPath: TOKENS_PATH,
+    });
+  });
+}
+
 app.get('/health/deps', async (req, res) => {
   const checks = {};
 
@@ -463,10 +480,15 @@ app.get('/health/deps', async (req, res) => {
   if (process.env.JOBS_API_BASE && process.env.JOBS_API_SECRET) {
     try {
       const url = `${process.env.JOBS_API_BASE}?action=health&secret=${process.env.JOBS_API_SECRET}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       const response = await fetch(url, {
         method: 'GET',
-        timeout: 5000,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
       checks.apps_script = response.ok;
     } catch (e) {
       checks.apps_script = false;
@@ -491,6 +513,10 @@ app.get('/health/deps', async (req, res) => {
     ok: allOk,
     checks,
     time: new Date().toISOString(),
+    environment: {
+      nodeEnv: process.env.NODE_ENV || 'development',
+      hasJobsApiConfig: !!(process.env.JOBS_API_BASE && process.env.JOBS_API_SECRET),
+    },
   });
 });
 
@@ -2110,8 +2136,18 @@ app.use((err, req, res, next) => {
 app.use(handleError);
 
 const PORT = process.env.PORT || 3000;
+
+// Log startup information
+logger.info('Starting Mr Tests Admin API', {
+  port: PORT,
+  nodeEnv: process.env.NODE_ENV || 'development',
+  hasJobsApi: !!(process.env.JOBS_API_BASE && process.env.JOBS_API_SECRET),
+  hasGitHubToken: !!process.env.GITHUB_TOKEN,
+  dataDir: DATA_DIR,
+});
+
 app.listen(PORT, () => {
-  console.log(`[admin-api] listening on ${PORT}`);
+  logger.info(`[admin-api] listening on ${PORT}`);
   KeepAlive.start();
 });
 
