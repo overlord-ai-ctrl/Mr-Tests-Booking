@@ -756,6 +756,10 @@ async function resolveAdminAsync(token) {
   let map;
   try {
     map = await loadAdminMap();
+    // If GitHub returns empty object, fall back to local file
+    if (!map || Object.keys(map).length === 0) {
+      map = readTokens();
+    }
   } catch (e) {
     // Fall back to local file for development
     map = readTokens();
