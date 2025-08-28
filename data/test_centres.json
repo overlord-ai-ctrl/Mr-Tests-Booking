@@ -11,5 +11,10 @@
   {
     "id": "slough",
     "name": "Slough"
+  },
+  {
+    "id": "oio",
+    "name": "oio",
+    "deleted": false
   }
 ]
