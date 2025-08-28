@@ -2398,6 +2398,73 @@ app.post('/api/debug/init-all-data', (req, res) => {
         fs.writeFileSync(CENTRES_PATH, JSON.stringify(centresData, null, 2));
         results.push('test_centres.json copied from local');
       } else {
+        const defaultCentres = {
+          "centres": [
+            { "id": "london", "name": "London" },
+            { "id": "manchester", "name": "Manchester" },
+            { "id": "birmingham", "name": "Birmingham" },
+            { "id": "leeds", "name": "Leeds" },
+            { "id": "liverpool", "name": "Liverpool" }
+          ],
+          "updated_at": Date.now()
+        };
+        fs.writeFileSync(CENTRES_PATH, JSON.stringify(defaultCentres, null, 2));
+        results.push('test_centres.json created with defaults');
+      }
+    } else {
+      results.push('test_centres.json already exists');
+    }
+    
+    res.json({ ok: true, message: 'All data files initialized successfully', results });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message, results });
+  }
+});
+
+// Initialize all data files if they don't exist
+app.post('/api/debug/init-all-data', (req, res) => {
+  const results = [];
+  
+  try {
+    // Initialize admin tokens
+    if (!fs.existsSync(TOKENS_PATH)) {
+      const defaultTokens = {
+        "1212": { "role": "master", "name": "George" },
+        "1231": { "role": "booker", "name": "Nicola" },
+        "1232": { "role": "booker", "name": "Racheal" },
+        "1234": { "role": "booker", "name": "Rayhanna" },
+        "2222": { "role": "booker", "name": "Preston" }
+      };
+      fs.writeFileSync(TOKENS_PATH, JSON.stringify(defaultTokens, null, 2));
+      results.push('admin_tokens.json created');
+    } else {
+      results.push('admin_tokens.json already exists');
+    }
+    
+    // Initialize open jobs
+    if (!fs.existsSync(OPEN_JOBS_PATH)) {
+      fs.writeFileSync(OPEN_JOBS_PATH, JSON.stringify({ jobs: [], updated_at: Date.now() }, null, 2));
+      results.push('open_jobs.json created');
+    } else {
+      results.push('open_jobs.json already exists');
+    }
+    
+    // Initialize my_jobs directory
+    if (!fs.existsSync(MYJ_DIR)) {
+      fs.mkdirSync(MYJ_DIR, { recursive: true });
+      results.push('my_jobs directory created');
+    } else {
+      results.push('my_jobs directory already exists');
+    }
+    
+    // Initialize test centres (copy from local if exists)
+    if (!fs.existsSync(CENTRES_PATH)) {
+      const localCentres = path.join(FALLBACK_DIR, 'test_centres.json');
+      if (fs.existsSync(localCentres)) {
+        const centresData = JSON.parse(fs.readFileSync(localCentres, 'utf8'));
+        fs.writeFileSync(CENTRES_PATH, JSON.stringify(centresData, null, 2));
+        results.push('test_centres.json copied from local');
+      } else {
         // Create default test centres
         const defaultCentres = {
           "centres": [
