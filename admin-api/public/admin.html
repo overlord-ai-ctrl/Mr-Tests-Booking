@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body>
+  <div id="errBar" class="alert alert-danger d-none" role="alert"></div>
   <div class="container my-4">
     <header class="d-flex align-items-center justify-content-between bg-white py-3 px-3 rounded shadow-sm mb-3">
       <div class="d-flex align-items-center gap-2">
@@ -41,10 +42,16 @@
       </div>
       <div class="row g-2 align-items-center mb-2">
         <div class="col-auto">
-          <input id="token" type="password" placeholder="Admin code" class="form-control"/>
+          <input id="unlockCode" type="password" placeholder="Admin code" class="form-control"/>
         </div>
         <div class="col-auto">
-          <button id="unlock" class="btn btn-primary">Unlock</button>
+          <button id="btnUnlock" class="btn btn-primary">Unlock</button>
+        </div>
+        <div class="col-auto">
+          <button id="btnTheme" class="btn btn-light">🌓</button>
+        </div>
+        <div class="col-auto">
+          <button id="btnHelp" class="btn btn-outline-info">?</button>
         </div>
         <div class="col-auto">
           <span id="authStatus" class="form-text"></span>
@@ -259,7 +266,7 @@
     </div>
   </div>
 
-  <script src="/admin/admin.js" defer></script>
+  <script src="/admin/admin.js?v=fix-unlock" defer></script>
   <script>
     // Register service worker
     if ('serviceWorker' in navigator) {

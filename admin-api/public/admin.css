@@ -1170,3 +1170,7 @@ body.dark .booker-section h6 {
   color: #1d4ed8;
   margin-left: 8px;
 }
+
+/* Error bar styling */
+.d-none { display: none !important; }
+#errBar { position: sticky; top: 0; z-index: 1000; }
