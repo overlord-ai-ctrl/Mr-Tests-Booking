@@ -34,47 +34,38 @@
       </div>
     </header>
 
-    <!-- Auth gate -->
-    <section id="authGate" class="panel card p-3 p-md-4 mb-3 auth">
-      <div class="d-flex align-items-center gap-2 mb-3">
-        <img src="/assets/MRTESTSLOGO.png?v=2" alt="Mr Tests Logo" class="logo" />
-        <h2 class="mb-0">Enter admin code</h2>
+    <!-- Unlock UI -->
+    <div id="unlockPanel" class="card p-3 mb-3">
+      <div class="d-flex gap-2">
+        <input id="unlockCode" class="form-control" placeholder="Enter admin code"/>
+        <button id="btnUnlock" class="btn btn-primary">Unlock</button>
+        <button id="btnTheme" class="btn btn-light" type="button">🌓</button>
+        <button id="btnHelp" class="btn btn-outline-info" type="button">?</button>
       </div>
-      <div class="row g-2 align-items-center mb-2">
-        <div class="col-auto">
-          <input id="unlockCode" type="password" placeholder="Admin code" class="form-control"/>
-        </div>
-        <div class="col-auto">
-          <button id="btnUnlock" class="btn btn-primary">Unlock</button>
-        </div>
-        <div class="col-auto">
-          <button id="btnTheme" class="btn btn-light">🌓</button>
-        </div>
-        <div class="col-auto">
-          <button id="btnHelp" class="btn btn-outline-info">?</button>
-        </div>
-        <div class="col-auto">
-          <span id="authStatus" class="form-text"></span>
-        </div>
-      </div>
-      <p class="hint">Codes are personal. Your code decides which pages you see.</p>
-    </section>
+    </div>
 
     <!-- App (hidden until authed) -->
     <main id="app" hidden>
-      <div id="errBar" class="errbar d-none" role="alert">Something went wrong. Please try again.</div>
-      <div id="netErr" class="alert alert-danger d-none">
-        Network error. <button id="retryBtn" class="btn btn-sm btn-light">Retry</button>
-      </div>
-      <div id="authWarn" class="alert alert-warning d-none">Please unlock with your admin code to continue.</div>
-      <ul id="nav" class="nav nav-tabs mb-3" hidden>
-        <li class="nav-item"><a class="nav-link active" data-nav="centres" href="#"><i class="bi bi-geo-alt me-2" aria-hidden="true"></i>Centres</a></li>
-        <li class="nav-item"><a class="nav-link" data-nav="profile" href="#"><i class="bi bi-person-circle me-2" aria-hidden="true"></i>Profile</a></li>
-        <li class="nav-item"><a class="nav-link" data-nav="jobs" href="#"><i class="bi bi-briefcase me-2" aria-hidden="true"></i>Find Jobs</a></li>
-        <li class="nav-item"><a class="nav-link" data-nav="myjobs" href="#"><i class="bi bi-list-check me-2" aria-hidden="true"></i>My Claimed Jobs</a></li>
-        <li class="nav-item"><a class="nav-link" data-nav="bookers" href="#"><i class="bi bi-people me-2" aria-hidden="true"></i>Bookers</a></li>
-        <li class="nav-item"><a class="nav-link" data-nav="admins" href="#"><i class="bi bi-shield-lock me-2" aria-hidden="true"></i>Admin Codes</a></li>
-      </ul>
+      <!-- Global error bar -->
+      <div id="errBar" class="alert alert-danger d-none" role="alert"></div>
+
+      <!-- Navigation -->
+      <nav id="nav" class="nav nav-tabs mb-3">
+        <a class="nav-link" data-nav="jobs">Jobs Board</a>
+        <a class="nav-link" data-nav="myjobs">My Jobs</a>
+        <a class="nav-link" data-nav="centres">Preferred Test Centres</a>
+        <a class="nav-link" data-nav="profile">Profile</a>
+        <a class="nav-link" data-nav="admins">Admin Codes</a>
+        <a class="nav-link" data-nav="bookers">Bookers</a>
+      </nav>
+
+      <!-- Pages -->
+      <div id="jobs" class="page d-none"></div>
+      <div id="myjobs" class="page d-none"></div>
+      <div id="centres" class="page d-none"></div>
+      <div id="profile" class="page d-none"></div>
+      <div id="admins" class="page d-none"></div>
+      <div id="bookers" class="page d-none"></div>
 
       <section class="panel card p-3 p-md-4 mb-3" data-page="centres">
         <h2>Preferred Test Centres</h2>
@@ -266,7 +257,7 @@
     </div>
   </div>
 
-  <script src="/admin/admin.js?v=fix-unlock" defer></script>
+  <script src="/admin/admin.js?v=hardreset" defer></script>
   <script>
     // Register service worker
     if ('serviceWorker' in navigator) {

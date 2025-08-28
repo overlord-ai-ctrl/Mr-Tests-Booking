@@ -1171,6 +1171,8 @@ body.dark .booker-section h6 {
   margin-left: 8px;
 }
 
-/* Error bar styling */
+/* Hard reset styling */
 .d-none { display: none !important; }
 #errBar { position: sticky; top: 0; z-index: 1000; }
+
+.nav .nav-link.active { font-weight: 600; }
