@@ -62,19 +62,27 @@ async function onUnlock(){
 
 // Show the main app interface after successful unlock
 function showApp(me) {
+  console.log('[showApp] Starting showApp with:', me);
+  
   // Hide unlock panel
   const unlockPanel = document.getElementById('unlockPanel');
+  console.log('[showApp] unlockPanel found:', !!unlockPanel);
   if (unlockPanel) unlockPanel.style.display = 'none';
   
   // Show main app
   const app = document.getElementById('app');
-  if (app) app.removeAttribute('hidden');
+  console.log('[showApp] app found:', !!app);
+  if (app) {
+    app.removeAttribute('hidden');
+    console.log('[showApp] app hidden attribute removed');
+  }
   
   // Show user info
   const userBox = document.getElementById('userBox');
   const userName = document.getElementById('userName');
   const userRole = document.getElementById('userRole');
   
+  console.log('[showApp] userBox found:', !!userBox);
   if (userBox) userBox.removeAttribute('hidden');
   if (userName) userName.textContent = me?.name || 'User';
   if (userRole) {
@@ -83,9 +91,11 @@ function showApp(me) {
   }
   
   // Set up basic tab navigation
+  console.log('[showApp] Setting up tabs...');
   setupTabs();
   
   // Load initial data
+  console.log('[showApp] Loading initial data...');
   loadInitialData();
 }
 
@@ -103,16 +113,23 @@ function setupTabs() {
 
 // Set active tab
 function setActiveTab(key) {
+  console.log('[setActiveTab] Setting active tab to:', key);
+  
   // Update nav links
   const navLinks = document.querySelectorAll('[data-nav]');
+  console.log('[setActiveTab] Found nav links:', navLinks.length);
   navLinks.forEach(link => {
     link.classList.toggle('active', link.getAttribute('data-nav') === key);
   });
   
   // Show/hide panels
   const panels = document.querySelectorAll('[data-page]');
+  console.log('[setActiveTab] Found panels:', panels.length);
   panels.forEach(panel => {
-    panel.hidden = panel.getAttribute('data-page') !== key;
+    const panelKey = panel.getAttribute('data-page');
+    const shouldShow = panelKey === key;
+    panel.hidden = !shouldShow;
+    console.log('[setActiveTab] Panel', panelKey, 'hidden:', !shouldShow);
   });
   
   // Load data for the active tab
