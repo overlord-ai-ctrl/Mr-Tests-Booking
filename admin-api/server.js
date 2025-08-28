@@ -53,9 +53,70 @@ try {
 // ESM-safe path resolution
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// Render cwd is already /opt/render/project/src
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+
+// Render disk configuration
+const DATA_DIR = process.env.DATA_DIR || '/data';            // Render disk mount
+const FALLBACK_DIR = path.resolve(process.cwd(), 'data');    // repo folder (old)
 const TOKENS_PATH = path.join(DATA_DIR, 'admin_tokens.json');
+const CENTRES_PATH = path.join(DATA_DIR, 'test_centres.json');
+const LOG_DIR = path.join(DATA_DIR, 'logs');
+const CHANGELOG_PATH = path.join(LOG_DIR, 'changes.jsonl');
+
+function ensureDirs() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  } catch (e) {
+    console.warn('[ensureDirs] failed:', e?.message);
+  }
+}
+
+// one-shot migration from old repo /data to disk /data
+function migrateIfNeeded() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const candidates = [
+      ['admin_tokens.json', TOKENS_PATH],
+      ['test_centres.json', CENTRES_PATH]
+    ];
+    for (const [name, dest] of candidates) {
+      const src = path.join(FALLBACK_DIR, name);
+      if (fs.existsSync(src) && !fs.existsSync(dest)) {
+        fs.copyFileSync(src, dest);
+        console.log('[migrate] copied', name, '→', dest);
+      }
+    }
+  } catch (e) {
+    console.warn('[migrate] skipped:', e?.message);
+  }
+}
+
+function readJson(p, fallback = {}) {
+  try {
+    return fs.existsSync(p)
+      ? JSON.parse(fs.readFileSync(p, 'utf8') || '{}')
+      : fallback;
+  } catch (e) {
+    console.error('readJson error', p, e?.message);
+    return fallback;
+  }
+}
+
+function writeJson(p, obj) {
+  try {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(obj, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('writeJson error', p, e?.message);
+    return false;
+  }
+}
+
+// Initialize data directories and migrate if needed
+ensureDirs();
+migrateIfNeeded();
+console.log('[data]', { DATA_DIR, TOKENS_PATH, CENTRES_PATH, LOG_DIR });
 
 // Configure logger (Winston if available, otherwise console)
 let logger;
@@ -186,30 +247,21 @@ function normCentreId(s) {
     .replace(/^-+|-+$/g, '');
 }
 
-// Token management helpers - ESM-safe and robust
+// Token management helpers - using safe IO functions
 function readTokens() {
-  try {
-    if (!fs.existsSync(TOKENS_PATH)) {
-      console.warn('No tokens file found; returning empty object');
-      return {};
-    }
-    const raw = fs.readFileSync(TOKENS_PATH, 'utf8') || '{}';
-    const obj = JSON.parse(raw);
-    return obj && typeof obj === 'object' ? obj : {};
-  } catch (e) {
-    console.error('readTokens error:', e.message);
-    return {};
-  }
+  return readJson(TOKENS_PATH, {});
 }
 
 function writeTokens(obj) {
+  return writeJson(TOKENS_PATH, obj);
+}
+
+// Change log helper for persistent logging
+function appendChangeLog(lineObj) {
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(TOKENS_PATH, JSON.stringify(obj, null, 2), 'utf8');
-    return true;
+    fs.appendFileSync(CHANGELOG_PATH, JSON.stringify(lineObj) + '\n', 'utf8');
   } catch (e) {
-    console.error('writeTokens error:', e.message);
-    return false;
+    console.warn('[appendChangeLog] failed:', e?.message);
   }
 }
 

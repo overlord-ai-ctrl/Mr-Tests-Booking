@@ -37,6 +37,9 @@ Thumbs.db
 logs
 *.log
 
+# Local data directory (use Render disk instead)
+data/
+
 # Runtime data
 pids
 *.pid
