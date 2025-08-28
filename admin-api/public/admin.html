@@ -4,6 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Mr Tests - Admin Dashboard</title>
+  <link rel="icon" type="image/png" href="/assets/MRTESTSLOGO.png?v=2">
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=outlined">
   <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png?v=outlined">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=outlined">
@@ -18,7 +19,7 @@
   <div class="container my-4">
     <header class="d-flex align-items-center justify-content-between bg-white py-3 px-3 rounded shadow-sm mb-3">
       <div class="d-flex align-items-center gap-2">
-        <img src="/assets/MRTESTSLOGO.png" alt="Mr Tests Logo" class="logo" />
+        <img src="/assets/MRTESTSLOGO.png?v=2" alt="Mr Tests Logo" class="logo" />
         <h1 class="h4 mb-0 text-primary">Mr Tests — Admin</h1>
       </div>
       <div class="d-flex align-items-center gap-2">
@@ -34,7 +35,7 @@
     <!-- Auth gate -->
     <section id="authGate" class="panel card p-3 p-md-4 mb-3 auth">
       <div class="d-flex align-items-center gap-2 mb-3">
-        <img src="/assets/MRTESTSLOGO.png" alt="Mr Tests Logo" class="logo" />
+        <img src="/assets/MRTESTSLOGO.png?v=2" alt="Mr Tests Logo" class="logo" />
         <h2 class="mb-0">Enter admin code</h2>
       </div>
       <div class="row g-2 align-items-center mb-2">
@@ -257,5 +258,19 @@
   </div>
 
   <script src="/admin/admin.js" defer></script>
+  <script>
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/admin/sw.js')
+          .then(registration => {
+            console.log('SW registered: ', registration);
+          })
+          .catch(registrationError => {
+            console.log('SW registration failed: ', registrationError);
+          });
+      });
+    }
+  </script>
 </body>
 </html>
