@@ -62,10 +62,15 @@ const CENTRES_PATH = path.join(DATA_DIR, 'test_centres.json');
 const LOG_DIR = path.join(DATA_DIR, 'logs');
 const CHANGELOG_PATH = path.join(LOG_DIR, 'changes.jsonl');
 
+// Local index paths for fast job serving
+const OPEN_JOBS_PATH = path.join(DATA_DIR, 'open_jobs.json');
+const MYJ_DIR = path.join(DATA_DIR, 'my_jobs');
+
 function ensureDirs() {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.mkdirSync(MYJ_DIR, { recursive: true });
   } catch (e) {
     console.warn('[ensureDirs] failed:', e?.message);
   }
@@ -264,6 +269,70 @@ function appendChangeLog(lineObj) {
     console.warn('[appendChangeLog] failed:', e?.message);
   }
 }
+
+// Local index stores for fast job serving
+const OpenJobsStore = (() => {
+  let cache = readJson(OPEN_JOBS_PATH, { jobs: [], updated_at: 0 });
+  function list() { return cache.jobs; }
+  function setAll(jobs) { 
+    cache.jobs = Array.isArray(jobs) ? jobs : []; 
+    cache.updated_at = Date.now(); 
+    writeJson(OPEN_JOBS_PATH, cache); 
+  }
+  function upsert(job) { 
+    const i = cache.jobs.findIndex(j => j.id === job.id); 
+    if (i >= 0) cache.jobs[i] = job; 
+    else cache.jobs.push(job); 
+    writeJson(OPEN_JOBS_PATH, cache); 
+  }
+  function remove(id) { 
+    cache.jobs = cache.jobs.filter(j => j.id !== id); 
+    writeJson(OPEN_JOBS_PATH, cache); 
+  }
+  return { list, setAll, upsert, remove };
+})();
+
+// My jobs per booker storage
+function myJobsPath(token) { return path.join(MYJ_DIR, `${token}.json`); }
+function readMyJobs(token) { return readJson(myJobsPath(token), { jobs: [], updated_at: 0 }); }
+function writeMyJobs(token, data) { 
+  const obj = { jobs: Array.isArray(data.jobs) ? data.jobs : [], updated_at: Date.now() }; 
+  return writeJson(myJobsPath(token), obj); 
+}
+function upsertMyJob(token, job) {
+  const file = readMyJobs(token);
+  const i = file.jobs.findIndex(j => j.id === job.id);
+  if (i >= 0) file.jobs[i] = job; 
+  else file.jobs.push(job);
+  writeMyJobs(token, file);
+}
+function removeMyJob(token, id) {
+  const file = readMyJobs(token);
+  file.jobs = file.jobs.filter(j => j.id !== id);
+  writeMyJobs(token, file);
+}
+
+// Background sync queue for Google Sheets
+const SyncQ = (() => {
+  const q = []; 
+  let busy = false;
+  function enqueue(task) { q.push(task); tick(); }
+  async function tick() { 
+    if (busy) return; 
+    busy = true; 
+    while (q.length) { 
+      const t = q.shift(); 
+      try { 
+        await t(); 
+      } catch (e) { 
+        console.warn('[SyncQ] task failed, retrying:', e?.message);
+        setTimeout(() => enqueue(t), 5000); 
+      } 
+    } 
+    busy = false; 
+  }
+  return { enqueue };
+})();
 
 // Helper to check if a token is master
 function isMaster(token) {
@@ -1348,71 +1417,58 @@ app.put('/api/my-profile', auth, async (req, res) => {
 
 // ---- Jobs board (open jobs filtered by booker coverage) ----
 app.get('/api/jobs/board', auth, async (req, res) => {
-  const env = requireJobsEnv(res);
-  if (!env) return;
   try {
-    const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
-    const { limit, offset } = parsePage(req);
-    const q = String(req.query.q || '');
-
-    // Get coverage for this token
+    const token = String(req.adminToken || '');
     const coverageArr = await getCoverageForToken(token);
-    const coverage = new Set(coverageArr);
-
-    const data = await JobCache.getOrSet(['board', 'open', token, q, limit, offset], () =>
-      jobsGet({ status: 'open', assigned_to: '', q, limit, offset })
-    );
-
-    // Filter jobs by coverage with fallback logic
-    const raw = Array.isArray(data.jobs) ? data.jobs : [];
-    const filtered =
-      coverage.size === 0
-        ? []
-        : raw.filter((job) => {
-            // Prefer explicit centre_id; else centre_name; else first desired
-            const rawCid =
-              job.centre_id ||
-              job.centre_name ||
-              (job.desired_centres ? String(job.desired_centres).split(',')[0] : '');
-            const cid = normCentreId(rawCid);
-            return coverage.has(cid);
-          });
-
-    res.json({
-      jobs: filtered,
-      _meta: {
-        raw: raw.length,
+    const coverage = new Set(coverageArr.map(normCentreId));
+    
+    const all = OpenJobsStore.list();
+    const filtered = all.filter(job => {
+      const rawCid = job.centre_id || job.centre_name || (job.desired_centres || '').split(',')[0] || '';
+      return coverage.has(normCentreId(rawCid));
+    });
+    
+    res.json({ 
+      jobs: filtered, 
+      _meta: { 
+        source: 'disk', 
+        total: all.length,
         after_filter: filtered.length,
-        coverage: coverageArr,
-      },
+        coverage: coverageArr
+      } 
     });
   } catch (e) {
-    console.error(e);
+    console.error('[jobs/board] error:', e);
     res.status(502).json({ error: 'Failed to load jobs' });
   }
 });
 
 // ---- My jobs (assigned_to = token) ----
 app.get('/api/jobs/mine', auth, async (req, res) => {
-  const env = requireJobsEnv(res);
-  if (!env) return;
   try {
-    const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
-    const { limit, offset } = parsePage(req);
-    const data = await JobCache.getOrSet(['mine', token, limit, offset], () =>
-      jobsGet({ assigned_to: token, limit, offset })
-    );
+    const token = String(req.adminToken || '');
+    const file = readMyJobs(token);
+    
+    // Trigger background reconcile if stale (>30s)
+    if ((Date.now() - (file.updated_at || 0)) > 30_000) {
+      SyncQ.enqueue(() => reconcileMyJobs(token));
+    }
+    
     const payout = Number(process.env.JOB_PAYOUT_GBP || 70);
-    const completed = (data.jobs || []).filter(
-      (j) => String(j.status).toLowerCase() === 'completed'
-    ).length;
-    res.json({
-      jobs: Array.isArray(data.jobs) ? data.jobs : [],
+    const completed = file.jobs.filter(j => String(j.status).toLowerCase() === 'completed').length;
+    
+    res.json({ 
+      jobs: file.jobs, 
       payout_per_job: payout,
       total_due: completed * payout,
+      _meta: { 
+        source: 'disk', 
+        count: file.jobs.length, 
+        updated_at: file.updated_at 
+      } 
     });
   } catch (e) {
-    console.error(e);
+    console.error('[jobs/mine] error:', e);
     res.status(502).json({ error: 'Failed to load my jobs' });
   }
 });
@@ -1460,6 +1516,19 @@ app.post('/api/jobs/claim', auth, async (req, res) => {
 
     const { job_id } = validation.data;
     const out = await jobsPost({ action: 'claim', booking_id: job_id, token });
+    
+    // Update local index: remove from OPEN, add to MY(token)
+    OpenJobsStore.remove(job_id);
+    SyncQ.enqueue(async () => {
+      try {
+        const data = await jobsGet({ id: job_id, limit: 1 });
+        const job = (data.jobs || [])[0];
+        if (job) upsertMyJob(token, job);
+      } catch (e) {
+        console.warn('[claim] background sync failed:', e?.message);
+      }
+    });
+    
     bustJobsCacheFor(token);
 
     // Store idempotency response
@@ -1522,6 +1591,19 @@ app.post('/api/jobs/release', auth, async (req, res) => {
       booking_id: job_id,
       token,
     });
+    
+    // Update local index: remove from MY(token), add back to OPEN
+    removeMyJob(token, job_id);
+    SyncQ.enqueue(async () => {
+      try {
+        const data = await jobsGet({ id: job_id, limit: 1 });
+        const job = (data.jobs || [])[0];
+        if (job && job.status === 'open') OpenJobsStore.upsert(job);
+      } catch (e) {
+        console.warn('[release] background sync failed:', e?.message);
+      }
+    });
+    
     bustJobsCacheFor(token);
 
     // Store idempotency response
@@ -1581,6 +1663,11 @@ app.post('/api/jobs/complete', auth, async (req, res) => {
       booking_id: job_id,
       token,
     });
+    
+    // Update local index: remove from MY(token) and ensure not in OPEN (prune to save space)
+    removeMyJob(token, job_id);
+    OpenJobsStore.remove(job_id);  // safety: ensure it isn't in open
+    
     bustJobsCacheFor(token);
 
     // Store idempotency response
@@ -1875,6 +1962,24 @@ app.post('/api/jobs/mark-client-reply', auth, async (req, res) => {
       token,
       reply,
     });
+    
+    // Reconcile this specific job in background
+    SyncQ.enqueue(async () => {
+      try {
+        const data = await jobsGet({ id: job_id, limit: 1 });
+        const job = (data.jobs || [])[0];
+        if (!job) return;
+        if (job.status === 'open') { // declined and re-opened
+          removeMyJob(token, job_id);
+          OpenJobsStore.upsert(job);
+        } else {
+          upsertMyJob(token, job); // keep updated in my jobs (offered/confirmed)
+        }
+      } catch (e) {
+        console.warn('[mark-client-reply] background sync failed:', e?.message);
+      }
+    });
+    
     try {
       JobCache?.bust?.();
     } catch (_) {}
@@ -1922,6 +2027,34 @@ app.post('/api/public/booking-request', async (req, res) => {
     if (missing.length) return res.status(400).json({ error: 'Missing fields', missing });
     const data = await jobsPost({ action: 'create_booking', booking, ip });
     if (!data.ok) return res.status(502).json({ error: 'Failed to create booking', detail: data });
+
+    // Add to open index immediately
+    const job = {
+      id: data.booking_id || genId(),
+      candidate: booking['Student Name'] || booking.student_name || '',
+      phone: booking.Phone || booking.phone || '',
+      licence_number: booking['Licence Number'] || booking.licence_number || '',
+      dvsa_ref: booking['DVSA Reference'] || booking.dvsa_ref || '',
+      notes: booking.Notes || booking.notes || '',
+      desired_centres: (booking['Desired Centres'] || booking.desired_centres || '').toLowerCase(),
+      desired_range: booking['Desired Range'] || booking.desired_range || '',
+      status: 'open',
+      assigned_to: '',
+      claimed_at: '',
+      completed_at: ''
+    };
+    OpenJobsStore.upsert(job);
+    
+    // Background sync confirmation (optional)
+    SyncQ.enqueue(async () => {
+      try {
+        const syncData = await jobsGet({ id: job.id, limit: 1 });
+        const syncJob = (syncData.jobs || [])[0];
+        if (syncJob) OpenJobsStore.upsert(syncJob);
+      } catch (e) {
+        console.warn('[booking-request] background sync failed:', e?.message);
+      }
+    });
 
     // Bust jobs cache so new booking appears immediately
     try {
@@ -2111,6 +2244,15 @@ app.get('/api/debug/env-lite', (req, res) => {
   });
 });
 
+// Debug endpoints for local index inspection
+app.get('/api/debug/open-jobs', (req, res) => {
+  res.json(readJson(OPEN_JOBS_PATH, { jobs: [], updated_at: 0 }));
+});
+
+app.get('/api/debug/my-jobs', auth, (req, res) => {
+  res.json(readMyJobs(String(req.adminToken || '')));
+});
+
 // Onboarding endpoints
 app.post('/api/admins/force-onboard', auth, async (req, res) => {
   try {
@@ -2280,6 +2422,40 @@ app.listen(PORT, () => {
   logger.info(`[admin-api] listening on ${PORT}`);
   KeepAlive.start();
 });
+
+// Initial fill for open jobs (if empty)
+(async function initialOpenFill() {
+  try {
+    if (!OpenJobsStore.list().length) {
+      const data = await jobsGet({ status: 'open', limit: 500, offset: 0 });
+      OpenJobsStore.setAll(Array.isArray(data.jobs) ? data.jobs : []);
+      console.log('[local-index] open jobs filled:', OpenJobsStore.list().length);
+    }
+  } catch (e) { 
+    console.warn('[local-index] open initial fill failed:', e?.message); 
+  }
+})();
+
+// Periodic reconcile for open jobs (every minute)
+setInterval(async () => {
+  try {
+    const data = await jobsGet({ status: 'open', limit: 500, offset: 0 });
+    OpenJobsStore.setAll(Array.isArray(data.jobs) ? data.jobs : []);
+  } catch (e) {
+    console.warn('[local-index] periodic reconcile failed:', e?.message);
+  }
+}, 60_000);
+
+// On-demand reconcile for my jobs (per booker)
+async function reconcileMyJobs(token) {
+  try {
+    const data = await jobsGet({ assigned_to: token, limit: 500, offset: 0 });
+    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+    writeMyJobs(token, { jobs });
+  } catch (e) {
+    console.warn('[local-index] reconcile my jobs failed:', e?.message);
+  }
+}
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
