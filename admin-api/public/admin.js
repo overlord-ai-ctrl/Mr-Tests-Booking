@@ -8,6 +8,47 @@
   let binLoaded = false;
   const COVERAGE = new Set(); // Coverage centre IDs for filtering
 
+  // AUTH module for centralized token/role management
+  const AUTH = (() => {
+    const KEY_TOKEN = 'adminToken';
+    const KEY_ROLE  = 'adminRole';
+    const KEY_NAME  = 'adminName';
+
+    function setToken(t) {
+      try { localStorage.setItem(KEY_TOKEN, String(t || '')); } catch {}
+    }
+    function getToken() {
+      try { return localStorage.getItem(KEY_TOKEN) || ''; } catch { return ''; }
+    }
+    function setProfile({role, name}) {
+      try { 
+        localStorage.setItem(KEY_ROLE, String(role || ''));
+        localStorage.setItem(KEY_NAME, String(name || ''));
+      } catch {}
+    }
+    function getRole() {
+      try { return localStorage.getItem(KEY_ROLE) || ''; } catch { return ''; }
+    }
+    function getName() {
+      try { return localStorage.getItem(KEY_NAME) || ''; } catch { return ''; }
+    }
+
+    async function ensureProfile() {
+      const token = getToken();
+      if (!token) return null;
+      try {
+        const me = await fetch('/api/me', { 
+          headers: { 'Authorization': `Bearer ${token}` } 
+        }).then(r => r.json());
+        if (me?.role) setProfile(me);
+        return me;
+      } catch { 
+        return null; 
+      }
+    }
+    return { setToken, getToken, setProfile, getRole, getName, ensureProfile };
+  })();
+
   // Helper to normalize centre IDs (same as server)
   function normCentreId(s) {
     return String(s || '')
