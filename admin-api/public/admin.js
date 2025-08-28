@@ -1000,6 +1000,14 @@
     meta.className = 'job-meta';
     const when = j.when ? `· ${j.when}` : '';
     meta.textContent = `ID:${j.id} ${when}`;
+    
+    // Add notes badge if notes exist
+    if (j.notes && j.notes.trim()) {
+      const notesBadge = document.createElement('span');
+      notesBadge.className = 'badge badge-notes';
+      notesBadge.textContent = 'Notes';
+      meta.appendChild(notesBadge);
+    }
 
     const right = document.createElement('div');
     right.className = 'job-actions';

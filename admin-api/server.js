@@ -296,8 +296,16 @@ const OpenJobsStore = (() => {
   }
   function upsert(job) { 
     const i = cache.jobs.findIndex(j => j.id === job.id); 
-    if (i >= 0) cache.jobs[i] = job; 
-    else cache.jobs.push(job); 
+    if (i >= 0) {
+      const existing = cache.jobs[i];
+      const merged = { ...existing, ...job };
+      // Preserve existing DVSA/Notes if new job is missing them
+      if (!merged.dvsa_ref && (existing?.dvsa_ref || '').trim()) merged.dvsa_ref = existing.dvsa_ref;
+      if (!merged.notes && (existing?.notes || '').trim()) merged.notes = existing.notes;
+      cache.jobs[i] = merged;
+    } else {
+      cache.jobs.push(job); 
+    }
     writeJson(OPEN_JOBS_PATH, cache); 
   }
   function remove(id) { 
@@ -317,8 +325,16 @@ function writeMyJobs(token, data) {
 function upsertMyJob(token, job) {
   const file = readMyJobs(token);
   const i = file.jobs.findIndex(j => j.id === job.id);
-  if (i >= 0) file.jobs[i] = job; 
-  else file.jobs.push(job);
+  if (i >= 0) {
+    const existing = file.jobs[i];
+    const merged = { ...existing, ...job };
+    // Preserve existing DVSA/Notes if new job is missing them
+    if (!merged.dvsa_ref && (existing?.dvsa_ref || '').trim()) merged.dvsa_ref = existing.dvsa_ref;
+    if (!merged.notes && (existing?.notes || '').trim()) merged.notes = existing.notes;
+    file.jobs[i] = merged;
+  } else {
+    file.jobs.push(job);
+  }
   writeMyJobs(token, file);
 }
 function removeMyJob(token, id) {
@@ -2257,6 +2273,24 @@ app.get('/api/debug/open-jobs', (req, res) => {
 
 app.get('/api/debug/my-jobs', auth, (req, res) => {
   res.json(readMyJobs(String(req.adminToken || '')));
+});
+
+// Debug endpoint for specific job inspection
+app.get('/api/debug/job/:id', auth, async (req, res) => {
+  const id = String(req.params.id || '');
+  try {
+    // Check local caches first
+    const fromOpen = (OpenJobsStore?.list?.() || []).find(x => x.id === id);
+    const fromMine = readMyJobs(String(req.adminToken || '')).jobs.find(x => x.id === id);
+    if (fromOpen || fromMine) {
+      return res.json({ source: fromOpen ? 'open' : 'mine', job: fromOpen || fromMine });
+    }
+    // Fallback: pull from Apps Script
+    const data = await jobsGet({ id, limit: 1 });
+    return res.json({ source: 'apps-script', job: (data.jobs || [])[0] || null });
+  } catch (e) {
+    return res.status(502).json({ error: 'debug_failed' });
+  }
 });
 
 // Onboarding endpoints

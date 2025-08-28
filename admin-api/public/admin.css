@@ -1150,3 +1150,13 @@ body.dark .booker-section h6 {
   height: 32px;
   object-fit: contain;
 }
+
+/* Notes badge styling */
+.badge-notes {
+  background: #fff7ed;
+  color: #9a3412;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 600;
+  margin-left: 6px;
+}

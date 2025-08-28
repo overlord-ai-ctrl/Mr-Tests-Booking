@@ -133,6 +133,10 @@
         <div class="field-error" id="e_dvsaRef"></div>
         <div class="hint">Must be for an existing future DVSA booking.</div>
 
+        <label for="notes">Notes for the booker (optional)</label>
+        <textarea id="notes" name="notes" rows="3" placeholder="Anything we should know…"></textarea>
+        <div class="field-error" id="e_notes"></div>
+
         <label class="req">Tier</label>
         <div class="pricing" id="tierWrap">
           <label class="pill selected" data-tier="Basic">
@@ -394,7 +398,7 @@
           'Desired Range': `${$('#desiredDateStart').value} to ${$('#desiredDateEnd').value}`,
           'Theory Expiry': $('#theoryExpire').value,
           'Last Attempt': $('#lastAttempt').value || '',
-          'Notes': $('#customerComments').value?.trim() || '',
+          'Notes': $('#notes').value?.trim() || '',
           'Tier': $('input[name="tier"]:checked')?.value || 'Basic',
           'Affiliate Code': $('#affiliateCode').value?.trim() || '',
           'Partner ID': window.affCode || ''
