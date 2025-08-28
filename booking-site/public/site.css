@@ -1,0 +1,58 @@
+/* Logo styles */
+.logo {
+  height: 56px;
+  display: block;
+  margin: 0 auto 14px;
+}
+
+/* Basic styling for booking site */
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f6f9ff;
+  color: #444;
+  margin: 0;
+  padding: 20px;
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 12px 24px;
+  background: #4154f1;
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn:hover {
+  background: #3447d1;
+  transform: translateY(-1px);
+}
+
+.muted {
+  color: #666;
+}
+
+h1, h2 {
+  color: #012970;
+  font-weight: 700;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 40px;
+}
