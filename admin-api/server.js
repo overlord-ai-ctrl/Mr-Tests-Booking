@@ -1,6 +1,14 @@
 // server.js
-import dotenv from 'dotenv';
-dotenv.config();
+// Load dotenv only in development or if explicitly requested
+if (process.env.NODE_ENV !== 'production' || process.env.LOAD_DOTENV === 'true') {
+  try {
+    const { config } = await import('dotenv');
+    config();
+  } catch (e) {
+    // dotenv not available, continue without it
+    console.log('dotenv not available, using environment variables directly');
+  }
+}
 
 import express from 'express';
 import cors from 'cors';
