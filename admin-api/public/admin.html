@@ -60,14 +60,7 @@
         <a class="nav-link" data-nav="bookers">Bookers</a>
       </nav>
 
-      <!-- Pages -->
-      <div id="jobs" class="page d-none" data-page="jobs"></div>
-      <div id="myjobs" class="page d-none" data-page="myjobs"></div>
-      <div id="centres" class="page d-none" data-page="centres"></div>
-      <div id="profile" class="page d-none" data-page="profile"></div>
-      <div id="admins" class="page d-none" data-page="admins"></div>
-      <div id="bookers" class="page d-none" data-page="bookers"></div>
-
+      <!-- Static pages (DOM exists on load; JS just fills them) -->
       <section class="panel card p-3 p-md-4 mb-3" data-page="centres">
         <h2>Preferred Test Centres</h2>
         <div class="toolbar d-flex gap-2 align-items-center mb-2">
@@ -108,7 +101,39 @@
         </div>
       </section>
 
-      <section class="panel card p-3 p-md-4 mb-3" data-page="profile" hidden>
+      <section class="panel card p-3 p-md-4 mb-3" data-page="jobs">
+        <p class="text-muted mb-3"><small>Claim a job that matches your centres. Details unlock after you claim.</small></p>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h2 class="h5 mb-0">Find Jobs</h2>
+          <div class="text-end">
+            <span id="jobsStatus" class="form-text"></span>
+          </div>
+        </div>
+        <div class="row g-2 align-items-center mb-2">
+          <div class="col-auto">
+            <input id="jobsSearch" class="form-control" type="text" placeholder="Search centre or candidate">
+          </div>
+          <div class="col-auto" id="jobCreate" hidden>
+            <button id="createJob" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Create job</button>
+            <span id="createJobStatus" class="form-text"></span>
+          </div>
+        </div>
+        <div id="jobsList" class="list"></div>
+      </section>
+
+      <section class="panel card p-3 p-md-4 mb-3" data-page="myjobs">
+        <p class="text-muted mb-3"><small>Propose a test, message the client, then mark as completed.</small></p>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h2 class="h5 mb-0">My Claimed Jobs</h2>
+          <span id="myJobsStatus" class="form-text"></span>
+        </div>
+        <div id="myJobsList" class="list"></div>
+        <div class="mt-2">
+          <span id="earnings" class="fw-semibold"></span>
+        </div>
+      </section>
+
+      <section class="panel card p-3 p-md-4 mb-3" data-page="profile">
         <p class="text-muted mb-3"><small>Set your name and coverage so matching jobs appear.</small></p>
         <div class="profile-header">
           <div>
@@ -145,7 +170,7 @@
         </div>
       </section>
 
-      <section class="panel card p-3 p-md-4 mb-3" data-page="admins" hidden>
+      <section class="panel card p-3 p-md-4 mb-3" data-page="admins">
         <h2>Admin Codes</h2>
         <div id="codesList" class="list"><div class="placeholder">Codes will appear here…</div></div>
 
@@ -172,40 +197,7 @@
         </div>
       </section>
 
-      <section class="panel card p-3 p-md-4 mb-3" data-page="jobs" hidden>
-        <p class="text-muted mb-3"><small>Claim a job that matches your centres. Details unlock after you claim.</small></p>
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h2 class="h5 mb-0">Find Jobs</h2>
-          <div class="text-end">
-            <span id="jobsStatus" class="form-text"></span>
-          </div>
-        </div>
-        <div class="row g-2 align-items-center mb-2">
-          <div class="col-auto">
-            <input id="jobsSearch" class="form-control" type="text" placeholder="Search centre or candidate">
-          </div>
-          <div class="col-auto" id="jobCreate" hidden>
-            <!-- master-only quick create (leave IDs if you already have fields; otherwise keep as-is) -->
-            <button id="createJob" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Create job</button>
-            <span id="createJobStatus" class="form-text"></span>
-          </div>
-        </div>
-        <div id="jobsList" class="list"></div>
-      </section>
-
-      <section class="panel card p-3 p-md-4 mb-3" data-page="myjobs" hidden>
-        <p class="text-muted mb-3"><small>Propose a test, message the client, then mark as completed.</small></p>
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h2 class="h5 mb-0">My Claimed Jobs</h2>
-          <span id="myJobsStatus" class="form-text"></span>
-        </div>
-        <div id="myJobsList" class="list"></div>
-        <div class="mt-2">
-          <span id="earnings" class="fw-semibold"></span>
-        </div>
-      </section>
-
-      <section class="panel card p-3 p-md-4 mb-3" data-page="bookers" hidden>
+      <section class="panel card p-3 p-md-4 mb-3" data-page="bookers">
         <p class="text-muted mb-3"><small>View and manage booker workloads and assignments.</small></p>
         <div class="row g-3">
           <div class="col-12 col-lg-4">
@@ -259,7 +251,7 @@
   </div>
 
   <!-- Load script (cache-bust) -->
-  <script src="/admin/admin.js?v=fix-tab-content" defer></script>
+  <script src="/admin/admin.js?v=ui-static" defer></script>
   <script>
     // Register service worker
     if ('serviceWorker' in navigator) {

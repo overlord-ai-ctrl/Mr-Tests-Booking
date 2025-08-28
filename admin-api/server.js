@@ -62,6 +62,25 @@ const CENTRES_PATH = path.join(DATA_DIR, 'test_centres.json');
 const LOG_DIR = path.join(DATA_DIR, 'logs');
 const CHANGELOG_PATH = path.join(LOG_DIR, 'changes.jsonl');
 
+// UI Guard: Only allow data files to be read from disk, not UI files
+const ALLOWED_DATA_FILES = [TOKENS_PATH, CENTRES_PATH, OPEN_JOBS_PATH];
+function isAllowedDataFile(filePath) {
+  return ALLOWED_DATA_FILES.includes(filePath) || filePath.startsWith(LOG_DIR + path.sep);
+}
+
+function readJSONSafe(filePath, fallback = null) {
+  try {
+    if (!isAllowedDataFile(filePath)) {
+      console.warn('[ui-guard] blocked read attempt:', filePath);
+      return fallback;
+    }
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    console.warn('[ui-guard] read error:', filePath, error.message);
+    return fallback;
+  }
+}
+
 // Local index paths for fast job serving
 const OPEN_JOBS_PATH = path.join(DATA_DIR, 'open_jobs.json');
 const MYJ_DIR = path.join(DATA_DIR, 'my_jobs');
@@ -2351,73 +2370,6 @@ app.post('/api/debug/init-tokens', (req, res) => {
     res.json({ ok: true, message: 'Admin tokens initialized successfully' });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
-  }
-});
-
-// Initialize all data files if they don't exist
-app.post('/api/debug/init-all-data', (req, res) => {
-  const results = [];
-  
-  try {
-    // Initialize admin tokens
-    if (!fs.existsSync(TOKENS_PATH)) {
-      const defaultTokens = {
-        "1212": { "role": "master", "name": "George" },
-        "1231": { "role": "booker", "name": "Nicola" },
-        "1232": { "role": "booker", "name": "Racheal" },
-        "1234": { "role": "booker", "name": "Rayhanna" },
-        "2222": { "role": "booker", "name": "Preston" }
-      };
-      fs.writeFileSync(TOKENS_PATH, JSON.stringify(defaultTokens, null, 2));
-      results.push('admin_tokens.json created');
-    } else {
-      results.push('admin_tokens.json already exists');
-    }
-    
-    // Initialize open jobs
-    if (!fs.existsSync(OPEN_JOBS_PATH)) {
-      fs.writeFileSync(OPEN_JOBS_PATH, JSON.stringify({ jobs: [], updated_at: Date.now() }, null, 2));
-      results.push('open_jobs.json created');
-    } else {
-      results.push('open_jobs.json already exists');
-    }
-    
-    // Initialize my_jobs directory
-    if (!fs.existsSync(MYJ_DIR)) {
-      fs.mkdirSync(MYJ_DIR, { recursive: true });
-      results.push('my_jobs directory created');
-    } else {
-      results.push('my_jobs directory already exists');
-    }
-    
-    // Initialize test centres (copy from local if exists)
-    if (!fs.existsSync(CENTRES_PATH)) {
-      const localCentres = path.join(FALLBACK_DIR, 'test_centres.json');
-      if (fs.existsSync(localCentres)) {
-        const centresData = JSON.parse(fs.readFileSync(localCentres, 'utf8'));
-        fs.writeFileSync(CENTRES_PATH, JSON.stringify(centresData, null, 2));
-        results.push('test_centres.json copied from local');
-      } else {
-        const defaultCentres = {
-          "centres": [
-            { "id": "london", "name": "London" },
-            { "id": "manchester", "name": "Manchester" },
-            { "id": "birmingham", "name": "Birmingham" },
-            { "id": "leeds", "name": "Leeds" },
-            { "id": "liverpool", "name": "Liverpool" }
-          ],
-          "updated_at": Date.now()
-        };
-        fs.writeFileSync(CENTRES_PATH, JSON.stringify(defaultCentres, null, 2));
-        results.push('test_centres.json created with defaults');
-      }
-    } else {
-      results.push('test_centres.json already exists');
-    }
-    
-    res.json({ ok: true, message: 'All data files initialized successfully', results });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: error.message, results });
   }
 });
 

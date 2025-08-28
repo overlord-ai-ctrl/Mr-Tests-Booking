@@ -124,6 +124,8 @@ function boot(){
   wireChrome();
   wireNav();
   // Show unlock panel by default - no auto-unlock
+  // Set default tab to centres (public content)
+  setActiveTab('centres');
   console.log('[admin] boot complete - unlock required');
 }
 if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
