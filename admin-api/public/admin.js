@@ -694,6 +694,10 @@
     document.getElementById('errBar')?.classList.add('d-none');
   }
 
+  function showAuthWarn(show) {
+    document.getElementById('authWarn')?.classList.toggle('d-none', !show);
+  }
+
   // Enhanced API with error handling, rate limit backoff, and idempotency
   async function api(path, method = 'GET', body, actionKey = null) {
     const headers = { 'Content-Type': 'application/json' };
@@ -873,35 +877,50 @@
   }
 
   async function unlock() {
-    TOKEN = q('#token').value.trim();
-    if (!TOKEN) return status('authStatus', 'Code required');
-    try {
-      ME = await api('/api/me', 'GET');
-      sessionStorage.setItem('mrtests_admin_token', TOKEN);
-      q('#authGate').hidden = true;
-      q('#app').hidden = false;
-      applyVisibility();
-      showNav();
-      status('authStatus', 'Unlocked ✓', true);
+    const unlockCode = q('#token').value.trim();
+    if (!unlockCode) return status('authStatus', 'Code required');
+    
+    // Set token and fetch profile using AUTH module
+    AUTH.setToken(unlockCode);
+    const me = await AUTH.ensureProfile(); // fetches /api/me and stores role/name
+    const role = AUTH.getRole();
+    const name = AUTH.getName();
+    
+    if (!me) {
+      status('authStatus', 'Invalid code');
+      return;
+    }
+    
+    // Update legacy variables for compatibility
+    TOKEN = unlockCode;
+    ME = me;
+    
+    sessionStorage.setItem('mrtests_admin_token', TOKEN);
+    q('#authGate').hidden = true;
+    q('#app').hidden = false;
+    showAuthWarn(false); // Hide auth warning on successful unlock
+    applyVisibility();
+    showNav();
+    status('authStatus', 'Unlocked ✓', true);
 
-      // Autoload everything permitted
-      loadCentres();
-      if (isMaster()) loadBin();
-      loadProfile();
-      loadProfileCentres();
-      loadProfileStats();
-      if (typeof loadCodes === 'function' && isMaster()) loadCodes();
+    // Autoload everything permitted
+    loadCentres();
+    if (isMaster()) loadBin();
+    loadProfile();
+    loadProfileCentres();
+    loadProfileStats();
+    if (typeof loadCodes === 'function' && isMaster()) loadCodes();
 
-      // Check for required onboarding first
-      const blocked = await checkOnboarding();
-      if (blocked) {
-        // Onboarding wizard is shown, don't proceed with normal initialization
-        return;
-      }
+    // Check for required onboarding first
+    const blocked = await checkOnboarding();
+    if (blocked) {
+      // Onboarding wizard is shown, don't proceed with normal initialization
+      return;
+    }
 
-      // Default landing for bookers: Jobs Board (or restore last tab)
-      if (!isMaster()) {
-        const preferredTab = loadTab();
+    // Default landing for bookers: Jobs Board (or restore last tab)
+    if (!isMaster()) {
+      const preferredTab = loadTab();
         setActiveTab(preferredTab);
         // Warm up My Jobs in background (optional)
         setTimeout(() => loadMyJobs?.(), 300);
@@ -2255,6 +2274,12 @@
     if (saved) {
       q('#token').value = saved;
     }
+    
+    // Show auth warning if no token is present
+    if (!AUTH.getToken()) {
+      showAuthWarn(true);
+    }
+    
     q('#unlock').onclick = unlock;
     q('#append').onclick = appendCentre;
     q('#saveProfile').onclick = saveMyProfile;

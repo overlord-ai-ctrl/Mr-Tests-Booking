@@ -261,6 +261,21 @@ function writeTokens(obj) {
   return writeJson(TOKENS_PATH, obj);
 }
 
+// Standardized role detection functions
+function getRoleByToken(token) {
+  const t = String(token || '').trim();
+  const tokens = readTokens();
+  const role = tokens?.[t]?.role || (t === '1212' ? 'master' : 'booker'); // fallback
+  const name = tokens?.[t]?.name || (t === '1212' ? 'George' : '');
+  return { role, name };
+}
+
+function isMasterReq(req) {
+  const t = String(req.adminToken || '').trim();
+  const { role } = getRoleByToken(t);
+  return role === 'master';
+}
+
 // Change log helper for persistent logging
 function appendChangeLog(lineObj) {
   try {
@@ -344,16 +359,7 @@ function isMaster(token) {
   }
 }
 
-// Enhanced master check for requests with fallback
-function isMasterReq(req) {
-  // prefer token role from file; fallback to hardcoded 1212
-  const token = String(req.adminToken || '').trim();
-  const tokens = readTokens(); // safely returns {}
-  const role = tokens?.[token]?.role || '';
-  if (role === 'master') return true;
-  if (token === '1212') return true; // safety fallback
-  return !!req.adminInfo?.isMaster;
-}
+
 
 // Helper to list all bookers
 function listBookers() {
@@ -925,9 +931,9 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 // Who am I (keep, but uses async auth now)
 app.get('/api/me', auth, (req, res) => {
-  const { name, pages } = req.adminInfo;
-  const role = roleFromPages(pages);
-  res.json({ name, pages, role });
+  const t = String(req.adminToken || '').trim();
+  const { role, name } = getRoleByToken(t);
+  res.json({ token: t, role, name });
 });
 
 // NEW: Admin Codes endpoints
@@ -2256,15 +2262,12 @@ app.get('/api/debug/my-jobs', auth, (req, res) => {
 // Onboarding endpoints
 app.post('/api/admins/force-onboard', auth, async (req, res) => {
   try {
-    const authToken = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
-    if (!isMaster(authToken)) {
-      return sendError(
-        res,
-        403,
-        'forbidden',
-        'MASTER_REQUIRED',
-        'Only master admins can force onboarding'
-      );
+    if (!isMasterReq(req)) {
+      return res.status(403).json({
+        error: 'forbidden',
+        code: 'MASTER_REQUIRED',
+        hint: 'Only master admins can perform this action'
+      });
     }
 
     const { token } = req.body || {};
