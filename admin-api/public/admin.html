@@ -61,12 +61,12 @@
       </nav>
 
       <!-- Pages -->
-      <div id="jobs" class="page d-none"></div>
-      <div id="myjobs" class="page d-none"></div>
-      <div id="centres" class="page d-none"></div>
-      <div id="profile" class="page d-none"></div>
-      <div id="admins" class="page d-none"></div>
-      <div id="bookers" class="page d-none"></div>
+      <div id="jobs" class="page d-none" data-page="jobs"></div>
+      <div id="myjobs" class="page d-none" data-page="myjobs"></div>
+      <div id="centres" class="page d-none" data-page="centres"></div>
+      <div id="profile" class="page d-none" data-page="profile"></div>
+      <div id="admins" class="page d-none" data-page="admins"></div>
+      <div id="bookers" class="page d-none" data-page="bookers"></div>
 
       <section class="panel card p-3 p-md-4 mb-3" data-page="centres">
         <h2>Preferred Test Centres</h2>
@@ -259,7 +259,7 @@
   </div>
 
   <!-- Load script (cache-bust) -->
-  <script src="/admin/admin.js?v=restore-admin-app" defer></script>
+  <script src="/admin/admin.js?v=fix-tab-content" defer></script>
   <script>
     // Register service worker
     if ('serviceWorker' in navigator) {
