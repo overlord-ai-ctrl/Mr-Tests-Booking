@@ -150,5 +150,19 @@
         }
       ]
     }
+  },
+  {
+    "timestamp": "2025-08-28T11:20:42.789Z",
+    "actor": "Admin",
+    "action": "centres.soft_delete",
+    "target": "test_centres.json",
+    "beforeSha": "ee4ef6e2bfa8a7555c53db97726efe2a00b65682",
+    "afterSha": null,
+    "details": {
+      "ids": [
+        "oio"
+      ],
+      "removedFromBookers": 0
+    }
   }
 ]
