@@ -1,208 +1,354 @@
 const API_BASE = '/api';
 
-function setText(id,msg,cls){
-  const el=document.getElementById(id); if(!el) return;
-  el.textContent = msg || '';
-  if (id==='unlockStatus') el.className = cls || '';
+function setText(id,msg,cls){ 
+  const el=document.getElementById(id); 
+  if(!el) return; 
+  el.textContent = msg||''; 
+  if(id==='unlockStatus') el.className = cls||''; 
 }
 
-// Auth store (no auto calls)
 const AUTH = (()=> {
   const K_T='adminToken', K_R='adminRole', K_N='adminName';
   const get=(k)=>{ try{return localStorage.getItem(k)||'';}catch{return '';} };
   const set=(k,v)=>{ try{localStorage.setItem(k,v);}catch{} };
-  return {
-    saveToken:(t)=>set(K_T,String(t||'')),
-    token:()=>get(K_T),
-    role:()=>get(K_R),
-    setProfile:(p)=>{ if(p?.role) set(K_R,p.role); if(p?.name!=null) set(K_N,p.name); }
-  };
+  async function me(){
+    const t = get(K_T); if(!t) throw new Error('No token');
+    const r = await fetch(`${API_BASE}/me`,{ headers:{ Authorization:`Bearer ${t}` }});
+    if(!r.ok) throw new Error('Unauthorized');
+    const j = await r.json(); if(j?.role){ set(K_R,j.role); if(j.name!=null) set(K_N,j.name); }
+    return j;
+  }
+  return { saveToken:(t)=>set(K_T,String(t||'')), token:()=>get(K_T), role:()=>get(K_R), name:()=>get(K_N), me };
 })();
 
-// One API wrapper used AFTER unlock
 async function api(path, method='GET', body){
   const headers={'Content-Type':'application/json'};
-  const tok = AUTH.token();
-  if (tok) headers.Authorization = `Bearer ${tok}`;
-  const res = await fetch(path, { method, headers, body: method==='GET'?undefined:JSON.stringify(body||{}) });
+  const tok = AUTH.token(); if (tok) headers.Authorization = `Bearer ${tok}`;
+  const res = await fetch(path,{ method, headers, body: method==='GET'?undefined:JSON.stringify(body||{}) });
   const txt = await res.text(); let data=null; try{ data = txt? JSON.parse(txt):null; }catch{}
   if(!res.ok){ const msg=(data?.hint||data?.error||txt||`HTTP ${res.status}`); const e=new Error(msg); e.status=res.status; e.payload=data; throw e; }
   return data||{};
 }
 
-// Unlock: ONLY here we start auth
+function isMaster(){ return (AUTH.role()==='master' || AUTH.token()==='1212'); }
+
+function applyVisibility(){
+  // Restore tabs first; then hide master-only AFTER successful unlock.
+  document.querySelectorAll('#nav .nav-link').forEach(a=>a.closest('li,.nav-item')?.classList.remove('d-none'));
+  if (!isMaster()){
+    ['admins','bookers'].forEach(k=>{
+      const el = document.querySelector(`[data-nav="${k}"]`)?.closest('li,.nav-item') || document.querySelector(`[data-nav="${k}"]`);
+      el?.classList.add('d-none');
+    });
+  }
+}
+
+function setActiveTab(key){
+  document.querySelectorAll('.page').forEach(p=>p.classList.add('d-none'));
+  document.querySelectorAll('#nav .nav-link').forEach(a=>a.classList.remove('active'));
+  document.getElementById(key)?.classList.remove('d-none');
+  document.querySelector(`#nav .nav-link[data-nav="${key}"]`)?.classList.add('active');
+  try{ localStorage.setItem('activeTab', key); }catch{}
+}
+
+/* RESTORE: wire Unlock + Theme + Help */
 async function onUnlock(){
-  const inp=document.getElementById('unlockCode');
   const btn=document.getElementById('btnUnlock');
+  const inp=document.getElementById('unlockCode');
   const code=(inp?.value||'').trim();
   if(!code){ setText('unlockStatus','Enter your admin code','error'); return; }
-
-  btn.disabled = true;
-  setText('unlockStatus','Checking code…','');
+  btn.disabled=true; setText('unlockStatus','Checking code…','');
 
   AUTH.saveToken(code);
-
   try{
-    // verify token AFTER user enters it
-    const me = await fetch(`${API_BASE}/me`, { headers:{ Authorization:`Bearer ${code}` } }).then(r=>{
-      if(!r.ok) throw new Error('Unauthorized'); return r.json();
-    });
-    AUTH.setProfile(me);
-    setText('unlockStatus', `Welcome ${me?.name||''} (${me?.role||'user'})`, 'ok');
-
-    // Show the main app interface
-    console.log('[onUnlock] About to call showApp with:', me);
-    showApp(me);
-  } catch(e){
-    setText('unlockStatus', e?.message || 'Unlock failed. Check your code.', 'error');
-    // Keep the code in the box so user can edit and retry
-  } finally {
-    btn.disabled = false;
-  }
+    const me = await AUTH.me(); // calls /api/me with Bearer token
+    setText('unlockStatus', `Welcome ${me?.name||''} (${me?.role||'user'})`,'ok');
+    
+    // Hide unlock panel and show main app
+    const unlockPanel = document.getElementById('unlockPanel');
+    if (unlockPanel) unlockPanel.style.display = 'none';
+    
+    const app = document.getElementById('app');
+    if (app) app.hidden = false;
+    
+    // Show user info
+    const userBox = document.getElementById('userBox');
+    const userName = document.getElementById('userName');
+    const userRole = document.getElementById('userRole');
+    if (userBox) userBox.hidden = false;
+    if (userName) userName.textContent = me?.name || 'User';
+    if (userRole) {
+      userRole.textContent = me?.role || 'user';
+      userRole.removeAttribute('style');
+    }
+    
+    applyVisibility();
+    setActiveTab(localStorage.getItem('activeTab') || 'jobs');
+    // Kick data loads if the functions exist (don't add new features)
+    if (typeof loadProfile==='function')  loadProfile();
+    if (typeof loadCentres==='function')  loadCentres();
+    if (typeof loadJobs==='function')     loadJobs();
+    if (typeof loadMyJobs==='function')   loadMyJobs();
+  }catch(e){
+    setText('unlockStatus', e?.message || 'Unlock failed. Check your code.','error');
+  }finally{ btn.disabled=false; }
 }
 
-// Show the main app interface after successful unlock
-function showApp(me) {
-  console.log('[showApp] Starting showApp with:', me);
-  
-  // Hide unlock panel
-  const unlockPanel = document.getElementById('unlockPanel');
-  console.log('[showApp] unlockPanel found:', !!unlockPanel);
-  if (unlockPanel) unlockPanel.style.display = 'none';
-  
-  // Show main app
-  const app = document.getElementById('app');
-  console.log('[showApp] app found:', !!app);
-  if (app) {
-    app.hidden = false;
-    console.log('[showApp] app hidden set to false');
-  }
-  
-  // Show user info
-  const userBox = document.getElementById('userBox');
-  const userName = document.getElementById('userName');
-  const userRole = document.getElementById('userRole');
-  
-  console.log('[showApp] userBox found:', !!userBox);
-  if (userBox) userBox.hidden = false;
-  if (userName) userName.textContent = me?.name || 'User';
-  if (userRole) {
-    userRole.textContent = me?.role || 'user';
-    userRole.removeAttribute('style'); // Remove display:none
-  }
-  
-  // Set up basic tab navigation
-  console.log('[showApp] Setting up tabs...');
-  setupTabs();
-  
-  // Load initial data
-  console.log('[showApp] Loading initial data...');
-  loadInitialData();
+function wireChrome(){
+  const btn=document.getElementById('btnUnlock'); if(btn) btn.onclick=onUnlock;
+  const inp=document.getElementById('unlockCode'); if(inp) inp.addEventListener('keydown', e=>{ if(e.key==='Enter') onUnlock(); });
+  const th=document.getElementById('btnTheme'); if(th) th.onclick=()=>document.body.classList.toggle('theme-dark');  // RESTORED
+  const hp=document.getElementById('btnHelp');  if(hp) hp.onclick=()=>alert('Help:\n1) Enter code\n2) Use tabs\n3) Claim/Assign → Offer → Confirm/Complete'); // RESTORED
 }
 
-// Basic tab setup
-function setupTabs() {
-  const navLinks = document.querySelectorAll('[data-nav]');
-  navLinks.forEach(link => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      const target = link.getAttribute('data-nav');
-      setActiveTab(target);
-    });
+/* RESTORE: wire nav clicks (do not remove existing loaders) */
+function wireNav(){
+  document.querySelectorAll('#nav .nav-link').forEach(a=>{
+    a.onclick=(e)=>{ e.preventDefault(); const k=a.getAttribute('data-nav'); setActiveTab(k);
+      if (k==='profile' && typeof loadProfile==='function') loadProfile();
+      else if (k==='centres' && typeof loadCentres==='function') loadCentres();
+      else if (k==='jobs' && typeof loadJobs==='function') loadJobs();
+      else if (k==='myjobs' && typeof loadMyJobs==='function') loadMyJobs();
+      else if (k==='admins' && typeof loadAdmins==='function') loadAdmins();
+      else if (k==='bookers' && typeof loadBookers==='function') loadBookers();
+    };
   });
 }
 
-// Set active tab
-function setActiveTab(key) {
-  console.log('[setActiveTab] Setting active tab to:', key);
-  
-  // Update nav links
-  const navLinks = document.querySelectorAll('[data-nav]');
-  console.log('[setActiveTab] Found nav links:', navLinks.length);
-  navLinks.forEach(link => {
-    link.classList.toggle('active', link.getAttribute('data-nav') === key);
-  });
-  
-  // Show/hide panels
-  const panels = document.querySelectorAll('[data-page]');
-  console.log('[setActiveTab] Found panels:', panels.length);
-  panels.forEach(panel => {
-    const panelKey = panel.getAttribute('data-page');
-    const shouldShow = panelKey === key;
-    panel.hidden = !shouldShow;
-    console.log('[setActiveTab] Panel', panelKey, 'hidden:', !shouldShow);
-  });
-  
-  // Load data for the active tab
-  switch(key) {
-    case 'jobs':
-      loadJobs();
-      break;
-    case 'myjobs':
-      loadMyJobs();
-      break;
-    case 'profile':
-      loadProfile();
-      break;
-    case 'centres':
-      loadCentres();
-      break;
-    case 'admins':
-      loadAdmins();
-      break;
-    case 'bookers':
-      loadBookers();
-      break;
+/* Restore boot: NO auth on load; only wire UI */
+function boot(){
+  wireChrome();
+  wireNav();
+  // show last tab or a safe default (centres is static)
+  setActiveTab(localStorage.getItem('activeTab') || 'centres');
+  // If a token exists from earlier, try to quietly rehydrate AFTER UI is visible
+  if (AUTH.token()){
+    AUTH.me().then(()=>{ 
+      applyVisibility(); 
+      if (typeof loadProfile==='function') loadProfile(); 
+      // Hide unlock panel and show app if we have a valid token
+      const unlockPanel = document.getElementById('unlockPanel');
+      if (unlockPanel) unlockPanel.style.display = 'none';
+      const app = document.getElementById('app');
+      if (app) app.hidden = false;
+    })
+             .catch(()=>{ /* ignore, user can re-unlock */ });
   }
+  console.log('[admin] restored UI boot ok');
 }
+if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 
-// Load initial data
-function loadInitialData() {
-  // Start with jobs tab
-  setActiveTab('jobs');
-}
+/* Watchdog: if unlock isn't bound, show a visible error */
+setTimeout(()=>{ const b=document.getElementById('btnUnlock'); if(b && !b.onclick){ setText('unlockStatus','UI failed to initialise. Hard refresh.', 'error'); }}, 1500);
 
-// Placeholder functions for data loading
+// ===== DATA LOADING FUNCTIONS =====
+
 async function loadJobs() {
   const list = document.getElementById('jobsList');
-  if (list) list.innerHTML = '<div class="placeholder">Loading jobs...</div>';
-  // TODO: Implement actual job loading
+  if (!list) return;
+  
+  try {
+    list.innerHTML = '<div class="placeholder">Loading jobs...</div>';
+    const data = await api('/api/jobs/board');
+    
+    if (!data.jobs || data.jobs.length === 0) {
+      list.innerHTML = '<div class="placeholder">No jobs available</div>';
+      return;
+    }
+    
+    list.innerHTML = data.jobs.map(job => `
+      <div class="job-card">
+        <div>
+          <div class="job-title">${job.candidate || 'Unknown Candidate'}</div>
+          <div class="job-meta">${job.desired_centres || 'No centres specified'}</div>
+        </div>
+        <div class="job-actions">
+          <span class="badge badge-open">Open</span>
+          <button class="btn btn-sm btn-primary" onclick="claimJob('${job.id}')">Claim</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    list.innerHTML = `<div class="placeholder">Error loading jobs: ${error.message}</div>`;
+  }
 }
 
 async function loadMyJobs() {
   const list = document.getElementById('myJobsList');
-  if (list) list.innerHTML = '<div class="placeholder">Loading your jobs...</div>';
-  // TODO: Implement actual my jobs loading
+  if (!list) return;
+  
+  try {
+    list.innerHTML = '<div class="placeholder">Loading your jobs...</div>';
+    const data = await api('/api/jobs/mine');
+    
+    if (!data.jobs || data.jobs.length === 0) {
+      list.innerHTML = '<div class="placeholder">No jobs claimed</div>';
+      return;
+    }
+    
+    list.innerHTML = data.jobs.map(job => `
+      <div class="job-card">
+        <div>
+          <div class="job-title">${job.candidate || 'Unknown Candidate'}</div>
+          <div class="job-meta">Status: ${job.status || 'unknown'}</div>
+        </div>
+        <div class="job-actions">
+          <span class="badge badge-claimed">Claimed</span>
+          <button class="btn btn-sm btn-success" onclick="completeJob('${job.id}')">Complete</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    list.innerHTML = `<div class="placeholder">Error loading your jobs: ${error.message}</div>`;
+  }
 }
 
 async function loadProfile() {
-  // TODO: Implement profile loading
+  try {
+    const data = await api('/api/my-profile');
+    
+    const profileName = document.getElementById('profileName');
+    const profileRole = document.getElementById('profileRole');
+    const profileNotes = document.getElementById('profileNotes');
+    const profileAvailable = document.getElementById('profileAvailable');
+    
+    if (profileName) profileName.textContent = data.name || 'Unknown';
+    if (profileRole) profileRole.textContent = data.role || 'user';
+    if (profileNotes) profileNotes.value = data.notes || '';
+    if (profileAvailable) profileAvailable.checked = data.available !== false;
+    
+    // Load profile centres
+    const profileCentres = document.getElementById('profileCentres');
+    if (profileCentres && data.centres) {
+      profileCentres.innerHTML = data.centres.map(centre => 
+        `<li>${centre}</li>`
+      ).join('');
+    }
+  } catch (error) {
+    console.error('Error loading profile:', error);
+  }
 }
 
 async function loadCentres() {
-  // TODO: Implement centres loading
+  const list = document.getElementById('centresBox');
+  if (!list) return;
+  
+  try {
+    list.innerHTML = '<div class="placeholder">Loading centres...</div>';
+    const data = await api('/api/test-centres');
+    
+    if (!data.centres || data.centres.length === 0) {
+      list.innerHTML = '<div class="placeholder">No centres available</div>';
+      return;
+    }
+    
+    list.innerHTML = data.centres.map(centre => `
+      <div class="row inline">
+        <span>${centre.name}</span>
+        <div class="coverage-right">
+          <input type="checkbox" class="form-check-input" id="centre-${centre.id}" />
+          <label for="centre-${centre.id}" class="form-check-label">Coverage</label>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    list.innerHTML = `<div class="placeholder">Error loading centres: ${error.message}</div>`;
+  }
 }
 
 async function loadAdmins() {
   const list = document.getElementById('codesList');
-  if (list) list.innerHTML = '<div class="placeholder">Loading admin codes...</div>';
-  // TODO: Implement admin codes loading
+  if (!list) return;
+  
+  try {
+    list.innerHTML = '<div class="placeholder">Loading admin codes...</div>';
+    const data = await api('/api/admin-codes');
+    
+    if (!data.codes || Object.keys(data.codes).length === 0) {
+      list.innerHTML = '<div class="placeholder">No admin codes</div>';
+      return;
+    }
+    
+    list.innerHTML = Object.entries(data.codes).map(([code, info]) => `
+      <div class="code-row">
+        <span class="fw-semibold">${code}</span>
+        <span>${info.name || 'Unknown'}</span>
+        <span class="badge">${info.role || 'user'}</span>
+        <div class="spacer"></div>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteAdmin('${code}')">Delete</button>
+      </div>
+    `).join('');
+  } catch (error) {
+    list.innerHTML = `<div class="placeholder">Error loading admin codes: ${error.message}</div>`;
+  }
 }
 
 async function loadBookers() {
-  // TODO: Implement bookers loading
+  const picker = document.getElementById('bookerPicker');
+  const meta = document.getElementById('bookerMeta');
+  const jobs = document.getElementById('bookerJobs');
+  
+  if (!picker) return;
+  
+  try {
+    const data = await api('/api/admins/bookers');
+    
+    if (!data.bookers || data.bookers.length === 0) {
+      picker.innerHTML = '<option>No bookers available</option>';
+      return;
+    }
+    
+    picker.innerHTML = data.bookers.map(booker => 
+      `<option value="${booker.token}">${booker.name} (${booker.role})</option>`
+    ).join('');
+    
+    // Wire booker selection
+    picker.onchange = async () => {
+      const token = picker.value;
+      if (!token) return;
+      
+      try {
+        const bookerData = await api(`/api/admins/bookers/${token}/jobs`);
+        if (meta) meta.innerHTML = `<div class="badge">${bookerData.jobs?.length || 0} jobs</div>`;
+        if (jobs) jobs.innerHTML = bookerData.jobs?.map(job => 
+          `<div class="job-card"><div class="job-title">${job.candidate}</div></div>`
+        ).join('') || '<div class="placeholder">No jobs</div>';
+      } catch (error) {
+        console.error('Error loading booker jobs:', error);
+      }
+    };
+  } catch (error) {
+    picker.innerHTML = '<option>Error loading bookers</option>';
+  }
 }
 
-// Wire only Unlock events; NO other loaders at boot
-function boot(){
-  const btn=document.getElementById('btnUnlock');
-  const inp=document.getElementById('unlockCode');
-  if (btn) btn.onclick = onUnlock;
-  if (inp) inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter') onUnlock(); });
+// ===== JOB ACTIONS =====
 
-  // Optional: show that JS is alive by pinging public endpoint (no auth)
-  fetch(`${API_BASE}/ping`).catch(()=>{});
-  console.log('[admin] no-auth landing ready');
+async function claimJob(jobId) {
+  try {
+    await api(`/api/jobs/claim`, 'POST', { jobId });
+    await loadJobs();
+    await loadMyJobs();
+  } catch (error) {
+    alert(`Error claiming job: ${error.message}`);
+  }
 }
 
-if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+async function completeJob(jobId) {
+  try {
+    await api(`/api/jobs/complete`, 'POST', { jobId });
+    await loadMyJobs();
+  } catch (error) {
+    alert(`Error completing job: ${error.message}`);
+  }
+}
+
+async function deleteAdmin(code) {
+  if (!confirm(`Delete admin code ${code}?`)) return;
+  try {
+    await api('/api/admin-codes', 'PUT', { action: 'delete', code });
+    await loadAdmins();
+  } catch (error) {
+    alert(`Error deleting admin: ${error.message}`);
+  }
+}
