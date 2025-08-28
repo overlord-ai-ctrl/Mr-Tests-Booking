@@ -1,11 +1,15 @@
 {
   "1212": {
+    "role": "master",
     "name": "George",
+    "coverage": ["london-mill-hill", "slough"],
+    "availability": true,
+    "onboarding_required": false,
+    "onboarded_at": "",
     "pages": [
       "centres",
       "admins"
     ],
-    "role": "master",
     "notes": "",
     "maxDaily": 10,
     "available": true,
@@ -15,39 +19,55 @@
     ]
   },
   "1231": {
+    "role": "booker",
     "name": "Nicola",
+    "coverage": [],
+    "availability": true,
+    "onboarding_required": false,
+    "onboarded_at": "",
     "pages": [
       "centres"
-    ],
-    "role": "booker"
+    ]
   },
   "1232": {
+    "role": "booker",
     "name": "Racheal",
+    "coverage": ["london-mill-hill", "slough"],
+    "availability": true,
+    "onboarding_required": false,
+    "onboarded_at": "",
     "pages": [
       "centres"
     ],
-    "role": "booker",
     "centres": [
       "london-mill-hill",
       "slough"
     ]
   },
   "1234": {
+    "role": "booker",
     "name": "Rayhanna",
+    "coverage": ["london-mill-hill", "slough"],
+    "availability": true,
+    "onboarding_required": false,
+    "onboarded_at": "",
     "pages": [
       "centres"
     ],
-    "role": "booker",
     "centres": [
       "london-mill-hill",
       "slough"
     ]
   },
   "2222": {
+    "role": "master",
     "name": "Preston",
+    "coverage": [],
+    "availability": true,
+    "onboarding_required": false,
+    "onboarded_at": "",
     "pages": [
       "*"
-    ],
-    "role": "master"
+    ]
   }
 }
