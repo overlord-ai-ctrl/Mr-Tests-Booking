@@ -50,18 +50,129 @@ async function onUnlock(){
     AUTH.setProfile(me);
     setText('unlockStatus', `Welcome ${me?.name||''} (${me?.role||'user'})`, 'ok');
 
-    // Now it's safe to load protected data:
-    if (typeof setActiveTab==='function') setActiveTab('jobs');
-    if (typeof loadJobs==='function') loadJobs();
-    if (typeof loadMyJobs==='function') loadMyJobs();
-    if (typeof loadProfile==='function') loadProfile();
-    if (typeof loadCentres==='function') loadCentres();
+    // Show the main app interface
+    showApp(me);
   } catch(e){
     setText('unlockStatus', e?.message || 'Unlock failed. Check your code.', 'error');
     // Keep the code in the box so user can edit and retry
   } finally {
     btn.disabled = false;
   }
+}
+
+// Show the main app interface after successful unlock
+function showApp(me) {
+  // Hide unlock panel
+  const unlockPanel = document.getElementById('unlockPanel');
+  if (unlockPanel) unlockPanel.style.display = 'none';
+  
+  // Show main app
+  const app = document.getElementById('app');
+  if (app) app.removeAttribute('hidden');
+  
+  // Show user info
+  const userBox = document.getElementById('userBox');
+  const userName = document.getElementById('userName');
+  const userRole = document.getElementById('userRole');
+  
+  if (userBox) userBox.removeAttribute('hidden');
+  if (userName) userName.textContent = me?.name || 'User';
+  if (userRole) {
+    userRole.textContent = me?.role || 'user';
+    userRole.removeAttribute('style'); // Remove display:none
+  }
+  
+  // Set up basic tab navigation
+  setupTabs();
+  
+  // Load initial data
+  loadInitialData();
+}
+
+// Basic tab setup
+function setupTabs() {
+  const navLinks = document.querySelectorAll('[data-nav]');
+  navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const target = link.getAttribute('data-nav');
+      setActiveTab(target);
+    });
+  });
+}
+
+// Set active tab
+function setActiveTab(key) {
+  // Update nav links
+  const navLinks = document.querySelectorAll('[data-nav]');
+  navLinks.forEach(link => {
+    link.classList.toggle('active', link.getAttribute('data-nav') === key);
+  });
+  
+  // Show/hide panels
+  const panels = document.querySelectorAll('[data-page]');
+  panels.forEach(panel => {
+    panel.hidden = panel.getAttribute('data-page') !== key;
+  });
+  
+  // Load data for the active tab
+  switch(key) {
+    case 'jobs':
+      loadJobs();
+      break;
+    case 'myjobs':
+      loadMyJobs();
+      break;
+    case 'profile':
+      loadProfile();
+      break;
+    case 'centres':
+      loadCentres();
+      break;
+    case 'admins':
+      loadAdmins();
+      break;
+    case 'bookers':
+      loadBookers();
+      break;
+  }
+}
+
+// Load initial data
+function loadInitialData() {
+  // Start with jobs tab
+  setActiveTab('jobs');
+}
+
+// Placeholder functions for data loading
+async function loadJobs() {
+  const list = document.getElementById('jobsList');
+  if (list) list.innerHTML = '<div class="placeholder">Loading jobs...</div>';
+  // TODO: Implement actual job loading
+}
+
+async function loadMyJobs() {
+  const list = document.getElementById('myJobsList');
+  if (list) list.innerHTML = '<div class="placeholder">Loading your jobs...</div>';
+  // TODO: Implement actual my jobs loading
+}
+
+async function loadProfile() {
+  // TODO: Implement profile loading
+}
+
+async function loadCentres() {
+  // TODO: Implement centres loading
+}
+
+async function loadAdmins() {
+  const list = document.getElementById('codesList');
+  if (list) list.innerHTML = '<div class="placeholder">Loading admin codes...</div>';
+  // TODO: Implement admin codes loading
+}
+
+async function loadBookers() {
+  // TODO: Implement bookers loading
 }
 
 // Wire only Unlock events; NO other loaders at boot
