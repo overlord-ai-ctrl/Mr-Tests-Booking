@@ -51,6 +51,7 @@ async function onUnlock(){
     setText('unlockStatus', `Welcome ${me?.name||''} (${me?.role||'user'})`, 'ok');
 
     // Show the main app interface
+    console.log('[onUnlock] About to call showApp with:', me);
     showApp(me);
   } catch(e){
     setText('unlockStatus', e?.message || 'Unlock failed. Check your code.', 'error');
@@ -73,8 +74,8 @@ function showApp(me) {
   const app = document.getElementById('app');
   console.log('[showApp] app found:', !!app);
   if (app) {
-    app.removeAttribute('hidden');
-    console.log('[showApp] app hidden attribute removed');
+    app.hidden = false;
+    console.log('[showApp] app hidden set to false');
   }
   
   // Show user info
@@ -83,7 +84,7 @@ function showApp(me) {
   const userRole = document.getElementById('userRole');
   
   console.log('[showApp] userBox found:', !!userBox);
-  if (userBox) userBox.removeAttribute('hidden');
+  if (userBox) userBox.hidden = false;
   if (userName) userName.textContent = me?.name || 'User';
   if (userRole) {
     userRole.textContent = me?.role || 'user';
