@@ -62,6 +62,9 @@ const CENTRES_PATH = path.join(DATA_DIR, 'test_centres.json');
 const LOG_DIR = path.join(DATA_DIR, 'logs');
 const CHANGELOG_PATH = path.join(LOG_DIR, 'changes.jsonl');
 
+// Local index paths for fast job serving
+const OPEN_JOBS_PATH = path.join(DATA_DIR, 'open_jobs.json');
+
 // UI Guard: Only allow data files to be read from disk, not UI files
 const ALLOWED_DATA_FILES = [TOKENS_PATH, CENTRES_PATH, OPEN_JOBS_PATH];
 function isAllowedDataFile(filePath) {
@@ -80,9 +83,6 @@ function readJSONSafe(filePath, fallback = null) {
     return fallback;
   }
 }
-
-// Local index paths for fast job serving
-const OPEN_JOBS_PATH = path.join(DATA_DIR, 'open_jobs.json');
 const MYJ_DIR = path.join(DATA_DIR, 'my_jobs');
 
 function ensureDirs() {
