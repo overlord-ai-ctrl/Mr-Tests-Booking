@@ -25,7 +25,7 @@ const AUTH = (() => {
 
 async function api(path, method = 'GET', body) {
   const headers = { 'Content-Type': 'application/json' };
-  const tok = AUTH.token?.();
+  const tok = AUTH.token();
   if (tok) headers.Authorization = `Bearer ${tok}`;
   const res = await fetch(path, { method, headers, body: method === 'GET' ? undefined : JSON.stringify(body || {}) });
   const txt = await res.text();
@@ -92,8 +92,8 @@ async function onUnlock() {
     const r = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${code}` } });
     if (!r.ok) throw new Error('Unauthorized');
     const me = await r.json();
-    AUTH.saveToken?.(code);
-    AUTH.setProfile?.(me);
+    AUTH.saveToken(code);
+    AUTH.setProfile(me);
     setStatus(`Welcome ${me?.name || ''} (${me?.role || 'user'})`, 'ok');
     applyVisibility();
     setActiveTab('jobs');
@@ -148,6 +148,17 @@ function formatRangeNice(s) {
   const b = new Date(m[2]);
   const opts = { day: '2-digit', month: 'short' };
   return `${a.toLocaleDateString('en-GB', opts)} – ${b.toLocaleDateString('en-GB', opts)}`;
+}
+
+/* ===== JOB DETAILS ===== */
+function showJobDetails(job) {
+  const details = [
+    `Candidate: ${job.candidate || 'N/A'}`,
+    `Centre: ${job.centre || 'N/A'}`,
+    `Notes: ${job.notes || 'None'}`,
+    `Status: ${job.status || 'Open'}`
+  ].join('\n');
+  alert(details);
 }
 
 /* ===== LOADERS (restore expected behavior) ===== */
