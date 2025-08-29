@@ -29,8 +29,10 @@
           <span id="userName" class="fw-semibold"></span>
           <span id="roleChip" class="role-chip d-none"></span>
         </div>
-        <button id="helpToggle" class="btn btn-sm btn-outline-secondary me-2" title="Show help">?</button>
-        <button id="darkModeToggle" class="btn btn-sm btn-outline-secondary" title="Toggle dark mode">🌙</button>
+        <div id="topControls" class="ms-auto d-flex align-items-center gap-2">
+          <button id="btnThemeTop" class="btn btn-sm btn-light" type="button" title="Toggle theme">🌓</button>
+          <button id="btnHelpTop" class="btn btn-sm btn-outline-info" type="button" title="Help">?</button>
+        </div>
       </div>
     </header>
 
@@ -39,8 +41,6 @@
       <div class="d-flex gap-2">
         <input id="unlockCode" class="form-control" placeholder="Enter admin code" autocomplete="off" />
         <button id="btnUnlock" class="btn btn-primary">Unlock</button>
-        <button id="btnTheme" class="btn btn-light" type="button">🌓</button>
-        <button id="btnHelp" class="btn btn-outline-info" type="button">?</button>
       </div>
       <small id="unlockStatus" class="text-muted d-block mt-2"></small>
     </div>
@@ -52,164 +52,21 @@
 
       <!-- Navigation -->
       <nav id="nav" class="nav nav-tabs mb-3">
-        <a class="nav-link" data-nav="jobs">Jobs Board</a>
-        <a class="nav-link" data-nav="myjobs">My Jobs</a>
-        <a class="nav-link" data-nav="centres">Preferred Test Centres</a>
-        <a class="nav-link" data-nav="profile">Profile</a>
-        <a class="nav-link" data-nav="admins">Admin Codes</a>
-        <a class="nav-link" data-nav="bookers">Bookers</a>
+        <a class="nav-link" data-nav="jobs"><i class="bi bi-kanban"></i> Jobs Board</a>
+        <a class="nav-link" data-nav="myjobs"><i class="bi bi-briefcase"></i> My Jobs</a>
+        <a class="nav-link" data-nav="centres"><i class="bi bi-geo-alt"></i> Preferred Test Centres</a>
+        <a class="nav-link" data-nav="profile"><i class="bi bi-person-circle"></i> Profile</a>
+        <a class="nav-link" data-nav="admins"><i class="bi bi-key"></i> Admin Codes</a>
+        <a class="nav-link" data-nav="bookers"><i class="bi bi-people"></i> Bookers</a>
       </nav>
 
-      <!-- Static pages (DOM exists on load; JS just fills them) -->
-      <section class="panel card p-3 p-md-4 mb-3" data-page="centres">
-        <h2>Preferred Test Centres</h2>
-        <div class="toolbar d-flex gap-2 align-items-center mb-2">
-          <button id="toggleBin" class="btn btn-sm btn-outline-secondary">Recycle Bin</button>
-          <span id="status" class="form-text ms-auto"></span>
-        </div>
-        <div id="centresBox" class="list">
-          <div class="placeholder">Centres will appear here…</div>
-        </div>
-        
-        <div id="binPanel" class="mt-2" hidden>
-          <div id="binList" class="list"></div>
-          <span id="binStatus" class="form-text"></span>
-        </div>
-        
-        <h3>Add a new centre</h3>
-        <div class="row g-2 align-items-center mb-2">
-          <div class="col-auto">
-            <input id="newName" type="text" placeholder="Name e.g. London - Wood Green" class="form-control"/>
-          </div>
-          <div class="col-auto">
-            <button id="append" class="btn btn-primary">Append</button>
-          </div>
-          <div class="col-auto">
-            <span id="appendStatus" class="form-text"></span>
-          </div>
-        </div>
-        
-        <h3>My coverage</h3>
-        <div id="myCoverageBox" class="list"><div class="placeholder">Load centres first…</div></div>
-        <div class="row g-2 align-items-center mb-2">
-          <div class="col-auto">
-            <button id="saveCoverage" class="btn btn-primary">Save my coverage</button>
-          </div>
-          <div class="col-auto">
-            <span id="coverageStatus" class="form-text"></span>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel card p-3 p-md-4 mb-3" data-page="jobs">
-        <p class="text-muted mb-3"><small>Claim a job that matches your centres. Details unlock after you claim.</small></p>
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h2 class="h5 mb-0">Find Jobs</h2>
-          <div class="text-end">
-            <span id="jobsStatus" class="form-text"></span>
-          </div>
-        </div>
-        <div class="row g-2 align-items-center mb-2">
-          <div class="col-auto">
-            <input id="jobsSearch" class="form-control" type="text" placeholder="Search centre or candidate">
-          </div>
-          <div class="col-auto" id="jobCreate" hidden>
-            <button id="createJob" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Create job</button>
-            <span id="createJobStatus" class="form-text"></span>
-          </div>
-        </div>
-        <div id="jobsList" class="list"></div>
-      </section>
-
-      <section class="panel card p-3 p-md-4 mb-3" data-page="myjobs">
-        <p class="text-muted mb-3"><small>Propose a test, message the client, then mark as completed.</small></p>
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h2 class="h5 mb-0">My Claimed Jobs</h2>
-          <span id="myJobsStatus" class="form-text"></span>
-        </div>
-        <div id="myJobsList" class="list"></div>
-        <div class="mt-2">
-          <span id="earnings" class="fw-semibold"></span>
-        </div>
-      </section>
-
-      <section class="panel card p-3 p-md-4 mb-3" data-page="profile">
-        <p class="text-muted mb-3"><small>Set your name and coverage so matching jobs appear.</small></p>
-        <div class="profile-header">
-          <div>
-            <div class="profile-name" id="profileName">—</div>
-            <div class="profile-sub">
-              <span class="badge" id="profileRole">—</span>
-              <label class="switch">
-                <input type="checkbox" id="profileAvailable">
-                <span>Available</span>
-              </label>
-            </div>
-          </div>
-          <div class="profile-stats">
-            <div class="stat">
-              <div class="stat-num" id="profileLifetime">0</div>
-              <div class="stat-label">Lifetime jobs</div>
-            </div>
-          </div>
-        </div>
-        <div class="row g-2 align-items-center mb-2">
-          <div class="col-auto">
-            <textarea id="profileNotes" placeholder="Notes…" rows="3" class="form-control"></textarea>
-          </div>
-          <div class="col-auto">
-            <button id="saveProfile" class="btn btn-primary">Save profile</button>
-          </div>
-          <div class="col-auto">
-            <span id="profileStatus" class="form-text"></span>
-          </div>
-        </div>
-        <div class="mt-3">
-          <h4>Preferred Test Centres</h4>
-          <ul id="profileCentres" class="clean-list"></ul>
-        </div>
-      </section>
-
-      <section class="panel card p-3 p-md-4 mb-3" data-page="admins">
-        <h2>Admin Codes</h2>
-        <div id="codesList" class="list"><div class="placeholder">Codes will appear here…</div></div>
-
-        <h3>Add a new admin</h3>
-        <div class="row g-2 align-items-center mb-2">
-          <div class="col-auto">
-            <input id="newCode" type="text" placeholder="Code (e.g. 7777 or alice-1)" class="form-control"/>
-          </div>
-          <div class="col-auto">
-            <input id="newAdminName" type="text" placeholder="Name e.g. Alice" class="form-control"/>
-          </div>
-          <div class="col-auto">
-            <select id="newRole" class="form-control">
-              <option value="booker">Booker</option>
-              <option value="master">Master admin</option>
-            </select>
-          </div>
-          <div class="col-auto">
-            <button id="addCode" class="btn btn-primary">Add code</button>
-          </div>
-          <div class="col-auto">
-            <span id="addCodeStatus" class="form-text"></span>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel card p-3 p-md-4 mb-3" data-page="bookers">
-        <p class="text-muted mb-3"><small>View and manage booker workloads and assignments.</small></p>
-        <div class="row g-3">
-          <div class="col-12 col-lg-4">
-            <label class="form-label">Select booker</label>
-            <select id="bookerPicker" class="form-select"></select>
-            <div id="bookerMeta" class="mt-2"></div>
-          </div>
-          <div class="col-12 col-lg-8">
-            <div id="bookerJobs"></div>
-          </div>
-        </div>
-      </section>
+      <!-- Tab content containers -->
+      <div id="jobs" class="page d-none"></div>
+      <div id="myjobs" class="page d-none"></div>
+      <div id="centres" class="page d-none"></div>
+      <div id="profile" class="page d-none"></div>
+      <div id="admins" class="page d-none"></div>
+      <div id="bookers" class="page d-none"></div>
     </main>
   </div>
 
@@ -251,7 +108,7 @@
   </div>
 
   <!-- Load script (cache-bust) -->
-  <script src="/admin/admin.js?v=ui-static" defer></script>
+  <script src="/admin/admin.js?v=restore-controls" defer></script>
   <script>
     // Register service worker
     if ('serviceWorker' in navigator) {

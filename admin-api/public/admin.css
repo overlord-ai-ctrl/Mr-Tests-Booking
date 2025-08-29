@@ -5,6 +5,14 @@ body {
   color: #444;
 }
 
+/* Helper classes */
+.d-none { display: none !important; }
+.nav .nav-link i { margin-right: .35rem; }
+
+.badge-notes { background:#fff7ed; color:#9a3412; border-radius:999px; padding:2px 8px; font-weight:600; margin-left:6px; }
+.field { display:flex; gap:.5rem; margin:.25rem 0; }
+.field > label { width: 170px; font-weight:600; }
+
 /* Logo styles */
 .logo {
   height: 56px;

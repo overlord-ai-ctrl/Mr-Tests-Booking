@@ -1,346 +1,349 @@
 const API_BASE = '/api';
 
-function setText(id,msg,cls){ 
-  const el=document.getElementById(id); 
-  if(!el) return; 
-  el.textContent = msg||''; 
-  if(id==='unlockStatus') el.className = cls||''; 
-}
-
-const AUTH = (()=> {
-  const K_T='adminToken', K_R='adminRole', K_N='adminName';
-  const get=(k)=>{ try{return localStorage.getItem(k)||'';}catch{return '';} };
-  const set=(k,v)=>{ try{localStorage.setItem(k,v);}catch{} };
-  async function me(){
-    const t = get(K_T); if(!t) throw new Error('No token');
-    const r = await fetch(`${API_BASE}/me`,{ headers:{ Authorization:`Bearer ${t}` }});
-    if(!r.ok) throw new Error('Unauthorized');
-    const j = await r.json(); if(j?.role){ set(K_R,j.role); if(j.name!=null) set(K_N,j.name); }
-    return j;
-  }
-  return { saveToken:(t)=>set(K_T,String(t||'')), token:()=>get(K_T), role:()=>get(K_R), name:()=>get(K_N), me };
+/* ===== AUTH & API (minimal store) ===== */
+const AUTH = (() => {
+  let token = null;
+  let profile = null;
+  
+  return {
+    saveToken: (t) => { token = t; try { localStorage.setItem('adminToken', t); } catch {} },
+    token: () => token || (() => { try { return localStorage.getItem('adminToken'); } catch { return null; } })(),
+    setProfile: (p) => { profile = p; try { localStorage.setItem('adminProfile', JSON.stringify(p)); } catch {} },
+    role: () => profile?.role,
+    name: () => profile?.name,
+    me: async () => {
+      const t = AUTH.token();
+      if (!t) throw new Error('No token');
+      const res = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${t}` } });
+      if (!res.ok) throw new Error('Unauthorized');
+      const me = await res.json();
+      AUTH.setProfile(me);
+      return me;
+    }
+  };
 })();
 
-async function api(path, method='GET', body){
-  const headers={'Content-Type':'application/json'};
-  const tok = AUTH.token(); if (tok) headers.Authorization = `Bearer ${tok}`;
-  const res = await fetch(path,{ method, headers, body: method==='GET'?undefined:JSON.stringify(body||{}) });
-  const txt = await res.text(); let data=null; try{ data = txt? JSON.parse(txt):null; }catch{}
-  if(!res.ok){ const msg=(data?.hint||data?.error||txt||`HTTP ${res.status}`); const e=new Error(msg); e.status=res.status; e.payload=data; throw e; }
-  return data||{};
+async function api(path, method = 'GET', body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const tok = AUTH.token?.();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+  const res = await fetch(path, { method, headers, body: method === 'GET' ? undefined : JSON.stringify(body || {}) });
+  const txt = await res.text();
+  let data = null;
+  try { data = txt ? JSON.parse(txt) : null; } catch {}
+  if (!res.ok) {
+    const msg = (data?.hint || data?.error || txt || `HTTP ${res.status}`);
+    const e = new Error(msg);
+    e.status = res.status;
+    e.payload = data;
+    throw e;
+  }
+  return data || {};
 }
 
-function isMaster(){ return (AUTH.role()==='master' || AUTH.token()==='1212'); }
+/* ===== TOP CONTROLS (restore) ===== */
+function wireTopControls() {
+  const th = document.getElementById('btnThemeTop');
+  if (th) th.onclick = () => document.body.classList.toggle('theme-dark');
+  const hp = document.getElementById('btnHelpTop');
+  if (hp) hp.onclick = () => alert('Help:\n1) Unlock with your admin code.\n2) Use tabs to navigate.\n3) Bookers claim/assign jobs, offer, confirm, complete.');
+}
 
-function applyVisibility(){
-  // Restore tabs first; then hide master-only AFTER successful unlock.
-  document.querySelectorAll('#nav .nav-link').forEach(a=>a.closest('li,.nav-item')?.classList.remove('d-none'));
-  if (!isMaster()){
-    ['admins','bookers'].forEach(k=>{
+/* ===== TABS ===== */
+function setActiveTab(key) {
+  document.querySelectorAll('.page').forEach(p => p.classList.add('d-none'));
+  document.querySelectorAll('#nav .nav-link').forEach(a => a.classList.remove('active'));
+  document.getElementById(key)?.classList.remove('d-none');
+  document.querySelector(`#nav .nav-link[data-nav="${key}"]`)?.classList.add('active');
+  try { localStorage.setItem('activeTab', key); } catch {}
+}
+
+function wireNav() {
+  document.querySelectorAll('#nav .nav-link').forEach(a => {
+    a.onclick = (e) => {
+      e.preventDefault();
+      const k = a.getAttribute('data-nav');
+      setActiveTab(k);
+      if (k === 'jobs') loadJobs?.();
+      if (k === 'myjobs') loadMyJobs?.();
+      if (k === 'centres') loadCentres?.();
+      if (k === 'profile') loadProfile?.();
+      if (k === 'admins') loadAdmins?.();
+      if (k === 'bookers') loadBookers?.();
+    };
+  });
+}
+
+/* ===== UNLOCK (unchanged minimal) ===== */
+function setStatus(msg, cls) {
+  const el = document.getElementById('unlockStatus');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.className = cls || '';
+}
+
+async function onUnlock() {
+  const code = (document.getElementById('unlockCode')?.value || '').trim();
+  const btn = document.getElementById('btnUnlock');
+  if (!code) { setStatus('Enter your admin code', 'error'); return; }
+  btn.disabled = true;
+  setStatus('Checking code…', '');
+  try {
+    const r = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${code}` } });
+    if (!r.ok) throw new Error('Unauthorized');
+    const me = await r.json();
+    AUTH.saveToken?.(code);
+    AUTH.setProfile?.(me);
+    setStatus(`Welcome ${me?.name || ''} (${me?.role || 'user'})`, 'ok');
+    applyVisibility();
+    setActiveTab('jobs');
+    loadJobs?.();
+    loadMyJobs?.();
+    loadProfile?.();
+    loadCentres?.(); // restore initial loads
+  } catch (e) {
+    setStatus(e?.message || 'Unlock failed', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function wireUnlock() {
+  const b = document.getElementById('btnUnlock');
+  if (b) b.onclick = onUnlock;
+  const i = document.getElementById('unlockCode');
+  if (i) i.addEventListener('keydown', e => { if (e.key === 'Enter') onUnlock(); });
+}
+
+/* ===== ROLE-BASED VISIBILITY (unchanged) ===== */
+function applyVisibility() {
+  const isMaster = (AUTH.role?.() === 'master' || AUTH.token?.() === '1212');
+  document.querySelectorAll('#nav .nav-link').forEach(a => a.closest('li,.nav-item')?.classList.remove('d-none'));
+  if (!isMaster) {
+    ['admins', 'bookers'].forEach(k => {
       const el = document.querySelector(`[data-nav="${k}"]`)?.closest('li,.nav-item') || document.querySelector(`[data-nav="${k}"]`);
       el?.classList.add('d-none');
     });
   }
 }
 
-function setActiveTab(key){
-  console.log('[tab]', key);
-  // Hide all pages using [data-page] attribute
-  document.querySelectorAll('[data-page]').forEach(p=>p.classList.add('d-none'));
-  // Remove active from all nav links
-  document.querySelectorAll('#nav .nav-link').forEach(a=>a.classList.remove('active'));
-  // Show selected page and activate nav link
-  document.querySelector(`[data-page="${key}"]`)?.classList.remove('d-none');
-  document.querySelector(`#nav .nav-link[data-nav="${key}"]`)?.classList.add('active');
-  try{ localStorage.setItem('activeTab', key); }catch{}
+/* ===== RENDER HELPERS ===== */
+function field(parent, label, value) {
+  const row = document.createElement('div');
+  row.className = 'field';
+  const l = document.createElement('label');
+  l.textContent = label;
+  const v = document.createElement('div');
+  v.textContent = value || '—';
+  row.appendChild(l);
+  row.appendChild(v);
+  parent.appendChild(row);
 }
 
-/* RESTORE: wire Unlock + Theme + Help */
-async function onUnlock(){
-  const btn=document.getElementById('btnUnlock');
-  const inp=document.getElementById('unlockCode');
-  const code=(inp?.value||'').trim();
-  if(!code){ setText('unlockStatus','Enter your admin code','error'); return; }
-  btn.disabled=true; setText('unlockStatus','Checking code…','');
+function formatRangeNice(s) {
+  if (!s) return '—';
+  const m = String(s).match(/(\d{4}-\d{2}-\d{2}).*?(\d{4}-\d{2}-\d{2})/);
+  if (!m) return s;
+  const a = new Date(m[1]);
+  const b = new Date(m[2]);
+  const opts = { day: '2-digit', month: 'short' };
+  return `${a.toLocaleDateString('en-GB', opts)} – ${b.toLocaleDateString('en-GB', opts)}`;
+}
 
-  AUTH.saveToken(code);
-  try{
-    const me = await AUTH.me(); // calls /api/me with Bearer token
-    setText('unlockStatus', `Welcome ${me?.name||''} (${me?.role||'user'})`,'ok');
-    
-    // Hide unlock panel and show main app
-    const unlockPanel = document.getElementById('unlockPanel');
-    if (unlockPanel) unlockPanel.style.display = 'none';
-    
-    const app = document.getElementById('app');
-    if (app) app.hidden = false;
-    
-    // Show user info
-    const userBox = document.getElementById('userBox');
-    const userName = document.getElementById('userName');
-    const userRole = document.getElementById('userRole');
-    if (userBox) userBox.hidden = false;
-    if (userName) userName.textContent = me?.name || 'User';
-    if (userRole) {
-      userRole.textContent = me?.role || 'user';
-      userRole.removeAttribute('style');
+/* ===== LOADERS (restore expected behavior) ===== */
+// Jobs board (data from API; no UI from disk)
+async function loadJobs() {
+  const el = document.getElementById('jobs');
+  if (!el) return;
+  el.innerHTML = 'Loading…';
+  const data = await api('/api/jobs/board', 'GET');
+  const list = data?.jobs || [];
+  el.innerHTML = '';
+  if (!list.length) { el.textContent = 'No open jobs available.'; return; }
+  list.forEach(j => {
+    const card = document.createElement('div');
+    card.className = 'card p-3 mb-2';
+    const title = document.createElement('div');
+    title.innerHTML = `<strong>${j.candidate || 'Unnamed'}</strong>`;
+    const meta = document.createElement('div');
+    meta.textContent = j.centre_name || (j.desired_centres || '').split(',')[0] || '';
+    if (j.notes && j.notes.trim()) {
+      const n = document.createElement('span');
+      n.className = 'badge-notes';
+      n.textContent = 'Notes';
+      meta.appendChild(n);
     }
-    
-    applyVisibility();
-    setActiveTab('jobs');
-    // Kick data loads if the functions exist (don't add new features)
-    if (typeof loadProfile==='function')  loadProfile();
-    if (typeof loadCentres==='function')  loadCentres();
-    if (typeof loadJobs==='function')     loadJobs();
-    if (typeof loadMyJobs==='function')   loadMyJobs();
-  }catch(e){
-    setText('unlockStatus', e?.message || 'Unlock failed. Check your code.','error');
-  }finally{ btn.disabled=false; }
-}
-
-function wireChrome(){
-  const btn=document.getElementById('btnUnlock'); if(btn) btn.onclick=onUnlock;
-  const inp=document.getElementById('unlockCode'); if(inp) inp.addEventListener('keydown', e=>{ if(e.key==='Enter') onUnlock(); });
-  const th=document.getElementById('btnTheme'); if(th) th.onclick=()=>document.body.classList.toggle('theme-dark');  // RESTORED
-  const hp=document.getElementById('btnHelp');  if(hp) hp.onclick=()=>alert('Help:\n1) Enter code\n2) Use tabs\n3) Claim/Assign → Offer → Confirm/Complete'); // RESTORED
-}
-
-/* RESTORE: wire nav clicks (do not remove existing loaders) */
-function wireNav(){
-  document.querySelectorAll('#nav .nav-link').forEach(a=>{
-    a.onclick=(e)=>{ e.preventDefault(); const k=a.getAttribute('data-nav'); setActiveTab(k);
-      if (k==='profile' && typeof loadProfile==='function') loadProfile();
-      else if (k==='centres' && typeof loadCentres==='function') loadCentres();
-      else if (k==='jobs' && typeof loadJobs==='function') loadJobs();
-      else if (k==='myjobs' && typeof loadMyJobs==='function') loadMyJobs();
-      else if (k==='admins' && typeof loadAdmins==='function') loadAdmins();
-      else if (k==='bookers' && typeof loadBookers==='function') loadBookers();
-    };
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-primary mt-2';
+    btn.textContent = 'Details';
+    btn.onclick = () => showJobDetails(j);
+    card.appendChild(title);
+    card.appendChild(meta);
+    card.appendChild(btn);
+    el.appendChild(card);
   });
 }
 
-/* Restore boot: NO auth on load; only wire UI */
-function boot(){
-  wireChrome();
-  wireNav();
-  // Show unlock panel by default - no auto-unlock
-  // Set default tab to centres (public content)
-  setActiveTab('centres');
-  console.log('[admin] boot complete - unlock required');
-}
-if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-
-/* Watchdog: if unlock isn't bound, show a visible error */
-setTimeout(()=>{ const b=document.getElementById('btnUnlock'); if(b && !b.onclick){ setText('unlockStatus','UI failed to initialise. Hard refresh.', 'error'); }}, 1500);
-
-// ===== DATA LOADING FUNCTIONS =====
-
-async function loadJobs() {
-  const list = document.getElementById('jobsList');
-  if (!list) return;
-  
-  try {
-    list.innerHTML = '<div class="placeholder">Loading jobs...</div>';
-    const data = await api('/api/jobs/board');
-    
-    if (!data.jobs || data.jobs.length === 0) {
-      list.innerHTML = '<div class="placeholder">No jobs available</div>';
-      return;
-    }
-    
-    list.innerHTML = data.jobs.map(job => `
-      <div class="job-card">
-        <div>
-          <div class="job-title">${job.candidate || 'Unknown Candidate'}</div>
-          <div class="job-meta">${job.desired_centres || 'No centres specified'}</div>
-        </div>
-        <div class="job-actions">
-          <span class="badge badge-open">Open</span>
-          <button class="btn btn-sm btn-primary" onclick="claimJob('${job.id}')">Claim</button>
-        </div>
-      </div>
-    `).join('');
-  } catch (error) {
-    list.innerHTML = `<div class="placeholder">Error loading jobs: ${error.message}</div>`;
-  }
-}
-
+// My Jobs — RESTORE client details
 async function loadMyJobs() {
-  const list = document.getElementById('myJobsList');
-  if (!list) return;
-  
-  try {
-    list.innerHTML = '<div class="placeholder">Loading your jobs...</div>';
-    const data = await api('/api/jobs/mine');
-    
-    if (!data.jobs || data.jobs.length === 0) {
-      list.innerHTML = '<div class="placeholder">No jobs claimed</div>';
-      return;
-    }
-    
-    list.innerHTML = data.jobs.map(job => `
-      <div class="job-card">
-        <div>
-          <div class="job-title">${job.candidate || 'Unknown Candidate'}</div>
-          <div class="job-meta">Status: ${job.status || 'unknown'}</div>
-        </div>
-        <div class="job-actions">
-          <span class="badge badge-claimed">Claimed</span>
-          <button class="btn btn-sm btn-success" onclick="completeJob('${job.id}')">Complete</button>
-        </div>
-      </div>
-    `).join('');
-  } catch (error) {
-    list.innerHTML = `<div class="placeholder">Error loading your jobs: ${error.message}</div>`;
-  }
+  const el = document.getElementById('myjobs');
+  if (!el) return;
+  el.innerHTML = 'Loading…';
+  const data = await api('/api/jobs/mine', 'GET');
+  const list = data?.jobs || [];
+  el.innerHTML = '';
+  if (!list.length) { el.textContent = 'No jobs claimed yet.'; return; }
+  list.forEach(j => {
+    const card = document.createElement('div');
+    card.className = 'card p-3 mb-2';
+    const h = document.createElement('div');
+    h.innerHTML = `<strong>${j.candidate || 'Unnamed'}</strong>`;
+    const d = document.createElement('div');
+    d.className = 'mt-2';
+    field(d, 'Licence Number', j.licence_number);
+    field(d, 'DVSA Ref', j.dvsa_ref);
+    field(d, 'Notes', j.notes);
+    field(d, 'Desired Centres', j.desired_centres);
+    field(d, 'Desired Range', formatRangeNice(j.desired_range));
+    card.appendChild(h);
+    card.appendChild(d);
+    el.appendChild(card);
+  });
 }
 
-async function loadProfile() {
-  try {
-    const data = await api('/api/my-profile');
-    
-    const profileName = document.getElementById('profileName');
-    const profileRole = document.getElementById('profileRole');
-    const profileNotes = document.getElementById('profileNotes');
-    const profileAvailable = document.getElementById('profileAvailable');
-    
-    if (profileName) profileName.textContent = data.name || 'Unknown';
-    if (profileRole) profileRole.textContent = data.role || 'user';
-    if (profileNotes) profileNotes.value = data.notes || '';
-    if (profileAvailable) profileAvailable.checked = data.available !== false;
-    
-    // Load profile centres
-    const profileCentres = document.getElementById('profileCentres');
-    if (profileCentres && data.centres) {
-      profileCentres.innerHTML = data.centres.map(centre => 
-        `<li>${centre}</li>`
-      ).join('');
-    }
-  } catch (error) {
-    console.error('Error loading profile:', error);
-  }
-}
-
+// Preferred Test Centres — RESTORE list + simple add/delete
 async function loadCentres() {
-  const list = document.getElementById('centresBox');
-  if (!list) return;
-  
-  try {
-    list.innerHTML = '<div class="placeholder">Loading centres...</div>';
-    const data = await api('/api/test-centres');
-    
-    if (!data.centres || data.centres.length === 0) {
-      list.innerHTML = '<div class="placeholder">No centres available</div>';
-      return;
-    }
-    
-    list.innerHTML = data.centres.map(centre => `
-      <div class="row inline">
-        <span>${centre.name}</span>
-        <div class="coverage-right">
-          <input type="checkbox" class="form-check-input" id="centre-${centre.id}" />
-          <label for="centre-${centre.id}" class="form-check-label">Coverage</label>
-        </div>
-      </div>
-    `).join('');
-  } catch (error) {
-    list.innerHTML = `<div class="placeholder">Error loading centres: ${error.message}</div>`;
-  }
-}
+  const el = document.getElementById('centres');
+  if (!el) return;
+  el.innerHTML = 'Loading…';
+  const data = await api('/api/test-centres', 'GET');
+  const centres = data?.centres || data || [];
+  el.innerHTML = '';
+  if (!centres.length) { el.textContent = 'No centres defined yet.'; return; }
 
-async function loadAdmins() {
-  const list = document.getElementById('codesList');
-  if (!list) return;
-  
-  try {
-    list.innerHTML = '<div class="placeholder">Loading admin codes...</div>';
-    const data = await api('/api/admin-codes');
-    
-    if (!data.codes || Object.keys(data.codes).length === 0) {
-      list.innerHTML = '<div class="placeholder">No admin codes</div>';
-      return;
-    }
-    
-    list.innerHTML = Object.entries(data.codes).map(([code, info]) => `
-      <div class="code-row">
-        <span class="fw-semibold">${code}</span>
-        <span>${info.name || 'Unknown'}</span>
-        <span class="badge">${info.role || 'user'}</span>
-        <div class="spacer"></div>
-        <button class="btn btn-sm btn-outline-danger" onclick="deleteAdmin('${code}')">Delete</button>
-      </div>
-    `).join('');
-  } catch (error) {
-    list.innerHTML = `<div class="placeholder">Error loading admin codes: ${error.message}</div>`;
-  }
-}
-
-async function loadBookers() {
-  const picker = document.getElementById('bookerPicker');
-  const meta = document.getElementById('bookerMeta');
-  const jobs = document.getElementById('bookerJobs');
-  
-  if (!picker) return;
-  
-  try {
-    const data = await api('/api/admins/bookers');
-    
-    if (!data.bookers || data.bookers.length === 0) {
-      picker.innerHTML = '<option>No bookers available</option>';
-      return;
-    }
-    
-    picker.innerHTML = data.bookers.map(booker => 
-      `<option value="${booker.token}">${booker.name} (${booker.role})</option>`
-    ).join('');
-    
-    // Wire booker selection
-    picker.onchange = async () => {
-      const token = picker.value;
-      if (!token) return;
-      
-      try {
-        const bookerData = await api(`/api/admins/bookers/${token}/jobs`);
-        if (meta) meta.innerHTML = `<div class="badge">${bookerData.jobs?.length || 0} jobs</div>`;
-        if (jobs) jobs.innerHTML = bookerData.jobs?.map(job => 
-          `<div class="job-card"><div class="job-title">${job.candidate}</div></div>`
-        ).join('') || '<div class="placeholder">No jobs</div>';
-      } catch (error) {
-        console.error('Error loading booker jobs:', error);
-      }
+  const list = document.createElement('div');
+  centres.forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'd-flex align-items-center justify-content-between border rounded p-2 mb-2';
+    row.innerHTML = `<div>${c.name || c.id}</div>`;
+    const del = document.createElement('button');
+    del.className = 'btn btn-sm btn-outline-danger';
+    del.textContent = 'Delete';
+    del.onclick = async () => {
+      await api('/api/test-centres', 'POST', { action: 'delete', id: c.id || c.name });
+      loadCentres();
     };
-  } catch (error) {
-    picker.innerHTML = '<option>Error loading bookers</option>';
-  }
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+
+  const ad = document.createElement('div');
+  ad.className = 'd-flex gap-2 mt-3';
+  ad.innerHTML = `<input id="newCentreName" class="form-control" placeholder="New centre name"><button id="btnAddCentre" class="btn btn-success">Add</button>`;
+  el.appendChild(list);
+  el.appendChild(ad);
+  document.getElementById('btnAddCentre').onclick = async () => {
+    const name = document.getElementById('newCentreName').value.trim();
+    if (!name) return;
+    await api('/api/test-centres', 'POST', { action: 'add', name });
+    loadCentres();
+  };
 }
 
-// ===== JOB ACTIONS =====
-
-async function claimJob(jobId) {
-  try {
-    await api(`/api/jobs/claim`, 'POST', { jobId });
-    await loadJobs();
-    await loadMyJobs();
-  } catch (error) {
-    alert(`Error claiming job: ${error.message}`);
-  }
+// Profile — RESTORE minimal profile (name, role, preferred centres list)
+async function loadProfile() {
+  const el = document.getElementById('profile');
+  if (!el) return;
+  el.innerHTML = 'Loading…';
+  const me = await api('/api/me', 'GET').catch(() => null);
+  const data = await api('/api/test-centres', 'GET').catch(() => ({ centres: [] }));
+  el.innerHTML = '';
+  const box = document.createElement('div');
+  box.className = 'card p-3';
+  field(box, 'Name', me?.name || '—');
+  field(box, 'Role', me?.role || '—');
+  const covTitle = document.createElement('div');
+  covTitle.className = 'mt-2 mb-1 fw-bold';
+  covTitle.textContent = 'Preferred Centres';
+  box.appendChild(covTitle);
+  const ul = document.createElement('ul');
+  (data?.centres || data || []).forEach(c => {
+    const li = document.createElement('li');
+    li.textContent = c.name || c.id;
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
+  el.appendChild(box);
 }
 
-async function completeJob(jobId) {
-  try {
-    await api(`/api/jobs/complete`, 'POST', { jobId });
-    await loadMyJobs();
-  } catch (error) {
-    alert(`Error completing job: ${error.message}`);
-  }
+// Bookers — RESTORE selection populates coverage
+async function loadBookers() {
+  const el = document.getElementById('bookers');
+  if (!el) return;
+  el.innerHTML = 'Loading…';
+  const list = await api('/api/admins/bookers', 'GET').catch(() => []);
+  el.innerHTML = '';
+  if (!Array.isArray(list) || !list.length) { el.textContent = 'No bookers found.'; return; }
+
+  const sel = document.createElement('select');
+  sel.className = 'form-select mb-3';
+  sel.innerHTML = '<option value="">Select a booker…</option>' + list.map(b => `<option value="${b.token}">${b.name || b.token}</option>`).join('');
+  const info = document.createElement('div');
+  info.className = 'card p-3';
+  el.appendChild(sel);
+  el.appendChild(info);
+
+  sel.onchange = () => {
+    const t = sel.value;
+    const b = list.find(x => String(x.token) === t);
+    info.innerHTML = '';
+    if (!b) return;
+    field(info, 'Name', b.name || '—');
+    field(info, 'Token', b.token || '—');
+    const cov = document.createElement('div');
+    cov.className = 'mt-2';
+    const title = document.createElement('div');
+    title.className = 'fw-bold';
+    title.textContent = 'Coverage';
+    cov.appendChild(title);
+    const ul = document.createElement('ul');
+    (b.coverage || []).forEach(id => {
+      const li = document.createElement('li');
+      li.textContent = id;
+      ul.appendChild(li);
+    });
+    cov.appendChild(ul);
+    info.appendChild(cov);
+  };
 }
 
-async function deleteAdmin(code) {
-  if (!confirm(`Delete admin code ${code}?`)) return;
-  try {
-    await api('/api/admin-codes', 'PUT', { action: 'delete', code });
-    await loadAdmins();
-  } catch (error) {
-    alert(`Error deleting admin: ${error.message}`);
-  }
+// Admin Codes — RESTORE simple list
+async function loadAdmins() {
+  const el = document.getElementById('admins');
+  if (!el) return;
+  el.innerHTML = 'Loading…';
+  const data = await api('/api/admin-codes', 'GET').catch(() => []);
+  el.innerHTML = '';
+  if (!Array.isArray(data) || !data.length) { el.textContent = 'No admin codes found.'; return; }
+
+  const list = document.createElement('div');
+  data.forEach(code => {
+    const row = document.createElement('div');
+    row.className = 'd-flex align-items-center justify-content-between border rounded p-2 mb-2';
+    row.innerHTML = `<div><strong>${code.code}</strong> - ${code.name} (${code.role})</div>`;
+    list.appendChild(row);
+  });
+  el.appendChild(list);
 }
+
+/* ===== BOOT ===== */
+function boot() {
+  wireTopControls();
+  wireUnlock();
+  wireNav();
+  setActiveTab(localStorage.getItem('activeTab') || 'centres'); // safe default
+  console.log('[boot] controls+icons+tabs restored');
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
