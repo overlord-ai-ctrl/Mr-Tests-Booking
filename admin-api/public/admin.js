@@ -88,6 +88,15 @@ async function onUnlock() {
   if (!code) { setStatus('Enter your admin code', 'error'); return; }
   btn.disabled = true;
   setStatus('Checking code…', '');
+  
+  // Set up watchdog timer
+  const watchdog = setTimeout(() => {
+    const jobsTab = document.getElementById('jobs');
+    if (jobsTab && jobsTab.classList.contains('d-none')) {
+      setStatus('Failed to load dashboard after unlock', 'error');
+    }
+  }, 2000);
+  
   try {
     const r = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${code}` } });
     if (!r.ok) throw new Error('Unauthorized');
@@ -101,7 +110,12 @@ async function onUnlock() {
     loadMyJobs?.();
     loadProfile?.();
     loadCentres?.(); // restore initial loads
+    
+    // Clear watchdog and log success
+    clearTimeout(watchdog);
+    console.log('[unlock-ok]');
   } catch (e) {
+    clearTimeout(watchdog);
     setStatus(e?.message || 'Unlock failed', 'error');
   } finally {
     btn.disabled = false;
@@ -118,6 +132,16 @@ function wireUnlock() {
 /* ===== ROLE-BASED VISIBILITY (unchanged) ===== */
 function applyVisibility() {
   const isMaster = (AUTH.role?.() === 'master' || AUTH.token?.() === '1212');
+  
+  // Show the main app container
+  const app = document.getElementById('app');
+  if (app) app.hidden = false;
+  
+  // Show user info
+  const userBox = document.getElementById('userBox');
+  if (userBox) userBox.hidden = false;
+  
+  // Handle navigation visibility
   document.querySelectorAll('#nav .nav-link').forEach(a => a.closest('li,.nav-item')?.classList.remove('d-none'));
   if (!isMaster) {
     ['admins', 'bookers'].forEach(k => {

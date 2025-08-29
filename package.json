@@ -9,14 +9,18 @@
     "lint": "eslint \"**/*.js\"",
     "lint:fix": "eslint \"**/*.js\" --fix",
     "test": "echo 'No tests configured'",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "health": "curl -s http://localhost:3000/health || echo 'Server not running'"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "eslint": "^9.34.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-node": "^11.1.0",
     "nodemon": "^3.1.10",
+    "playwright": "^1.55.0",
     "prettier": "^3.6.2"
   },
   "dependencies": {

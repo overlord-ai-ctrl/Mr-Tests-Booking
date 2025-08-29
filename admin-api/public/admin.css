@@ -870,6 +870,16 @@ body.dark .screen-busy-box {
   display: none !important; 
 }
 
+/* Page containers need minimum dimensions to be visible */
+.page {
+  min-height: 200px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e0e6ed;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(1,41,112,0.05);
+}
+
 /* ===== UX INTUITION BUNDLE ===== */
 
 /* Empty states */
